@@ -1,181 +1,862 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>한자 GO: 구역별 탐험</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        body { margin: 0; overflow: hidden; background-color: #0f172a; touch-action: none; font-family: 'Pretendard', sans-serif; }
-        #camera-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; opacity: 0.9; }
-        .layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
-        .interactive { pointer-events: auto; }
-        .passthrough { pointer-events: none; }
-        @keyframes float { 0% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-15px) scale(1.05); } 100% { transform: translateY(0px) scale(1); } }
-        @keyframes pulse-glow { 0% { box-shadow: 0 0 10px rgba(250,204,21,0.5); } 50% { box-shadow: 0 0 40px rgba(250,204,21,1); } 100% { box-shadow: 0 0 10px rgba(250,204,21,0.5); } }
-        .target-marker { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); animation: float 3s ease-in-out infinite; display: none; transition: left 0.1s ease-out, opacity 0.2s; text-shadow: 2px 2px 10px rgba(0,0,0,0.8); pointer-events: auto; cursor: pointer; }
-        ::-webkit-scrollbar { display: none; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>한자 찾기 AR</title>
+<style>
+  :root{
+    --bg:#0b1220; --card:#121a2b; --accent:#38bdf8; --accent2:#facc15;
+    --good:#22c55e; --bad:#ef4444; --text:#f1f5f9; --sub:#94a3b8;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%; margin:0; overflow:hidden;}
+  body{
+    font-family:'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+    background:var(--bg); color:var(--text);
+  }
+  .screen{
+    position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; padding:24px;
+    background:var(--bg);
+  }
+  [hidden]{display:none !important;}
+
+  h1{font-size:22px; margin:0 0 4px;}
+  .sub{color:var(--sub); font-size:14px; margin-bottom:20px; text-align:center; line-height:1.5;}
+
+  .card{
+    background:var(--card); border-radius:16px; padding:20px;
+    width:100%; max-width:420px; box-shadow:0 8px 24px rgba(0,0,0,.35);
+  }
+  label{display:block; font-size:13px; color:var(--sub); margin:14px 0 6px;}
+  input[type=text], input[type=number]{
+    width:100%; padding:12px 14px; border-radius:10px; border:1px solid #24314d;
+    background:#0e1626; color:var(--text); font-size:16px;
+  }
+  input:focus{outline:2px solid var(--accent);}
+  .consent-box{
+    margin-top:16px; background:#0e1626; border:1px solid #24314d; border-radius:10px;
+    padding:12px; font-size:12.5px; color:var(--sub); max-height:150px; overflow-y:auto; line-height:1.6;
+  }
+  .consent-row{display:flex; align-items:flex-start; gap:8px; margin-top:12px; font-size:13px;}
+  .consent-row input{width:18px; height:18px; margin-top:2px; flex-shrink:0;}
+
+  button{
+    font-family:inherit; cursor:pointer; border:none; border-radius:12px;
+    font-weight:700; font-size:16px; padding:14px 18px; width:100%;
+  }
+  .btn-primary{background:var(--accent); color:#04121f; margin-top:18px;}
+  .btn-primary:disabled{background:#33415c; color:#7c8aa5; cursor:not-allowed;}
+  .btn-secondary{background:#1c2740; color:var(--text); margin-top:10px; border:1px solid #2f3d5c;}
+  .btn-ghost{background:transparent; color:var(--accent); text-decoration:underline; font-size:13px; padding:6px;}
+
+  /* 권한 화면 */
+  .perm-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:#0e1626; border-radius:12px; padding:14px; margin-bottom:10px;
+  }
+  .perm-row .label{font-size:14px;}
+  .perm-row .desc{font-size:11.5px; color:var(--sub); margin-top:2px;}
+  .perm-status{font-size:13px; font-weight:700; padding:6px 10px; border-radius:8px; white-space:nowrap;}
+  .perm-status.ok{background:rgba(34,197,94,.15); color:var(--good);}
+  .perm-status.no{background:rgba(148,163,184,.15); color:var(--sub);}
+  .perm-status.err{background:rgba(239,68,68,.15); color:var(--bad);}
+  .perm-btn{width:auto; padding:8px 14px; font-size:13px; background:var(--accent); color:#04121f; border-radius:8px;}
+
+  /* 게임 화면 */
+  #screen-game{padding:0; align-items:stretch; justify-content:flex-start;}
+  #camera-video{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; background:#000;
+  }
+  #camera-fallback{
+    position:absolute; inset:0; z-index:0;
+    background: radial-gradient(circle at 50% 40%, #16213c, #060a14 75%);
+  }
+  #hud-top{
+    position:absolute; top:0; left:0; right:0; z-index:5;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+    background:linear-gradient(rgba(0,0,0,.55), transparent);
+  }
+  #hud-top .who{font-size:13px;}
+  #hud-top .who b{color:var(--accent2);}
+  #hud-score{font-size:14px; font-weight:800; color:var(--accent2);}
+  #hud-progress{font-size:12px; color:var(--sub); margin-top:2px;}
+
+  /* 나침반 테이프 (상단, 발견 안된 목표 방향 안내) */
+  #compass-tape-wrap{
+    position:absolute; top:64px; left:0; right:0; z-index:5; height:44px;
+    overflow:hidden; pointer-events:none;
+  }
+  #compass-tape{
+    position:absolute; top:0; left:50%; height:100%; white-space:nowrap;
+  }
+  .tape-mark{
+    position:absolute; top:0; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; font-size:11px; color:var(--sub);
+  }
+  .tape-mark .glyph{
+    font-size:16px; background:rgba(18,26,43,.75); border:1px solid #2f3d5c;
+    border-radius:8px; padding:2px 6px; color:var(--text);
+  }
+  .tape-cardinal{color:var(--accent); font-weight:800; font-size:12px;}
+  #compass-center-line{
+    position:absolute; top:60px; left:50%; transform:translateX(-50%);
+    width:2px; height:14px; background:var(--accent); z-index:6; opacity:.85;
+  }
+
+  /* AR 레이어: 근접+정면 목표가 뜨는 곳 */
+  #ar-layer{position:absolute; inset:0; z-index:4; pointer-events:none;}
+  .ar-marker{
+    position:absolute; top:38%; transform:translate(-50%,-50%);
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    transition: left .12s linear, transform .12s linear, opacity .15s linear;
+    pointer-events:auto;
+  }
+  .ar-glyph{
+    font-size:54px; line-height:1; color:#fff;
+    text-shadow:0 0 18px rgba(56,189,248,.9), 0 2px 6px rgba(0,0,0,.6);
+    animation: float 2.4s ease-in-out infinite;
+  }
+  .ar-marker.capturable .ar-glyph{
+    text-shadow:0 0 26px rgba(250,204,21,1), 0 2px 8px rgba(0,0,0,.6);
+    animation: pulse 1s ease-in-out infinite;
+  }
+  @keyframes float{ 0%,100%{transform:translateY(0);} 50%{transform:translateY(-8px);} }
+  @keyframes pulse{ 0%,100%{transform:scale(1);} 50%{transform:scale(1.12);} }
+  .ar-dist{
+    font-size:11px; background:rgba(0,0,0,.55); padding:3px 8px; border-radius:999px; color:var(--sub);
+  }
+  .ar-marker.capturable .ar-dist{color:var(--accent2); font-weight:800;}
+  .ar-tapbtn{
+    margin-top:2px; background:var(--accent2); color:#241a02; font-size:12px; font-weight:800;
+    padding:6px 14px; border-radius:999px; border:none;
+  }
+
+  #hud-bottom{
+    position:absolute; left:0; right:0; bottom:0; z-index:5;
+    padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(transparent, rgba(0,0,0,.6));
+  }
+  #nearest-info{
+    background:rgba(18,26,43,.8); border:1px solid #2f3d5c; border-radius:12px;
+    padding:10px 14px; font-size:13px; display:flex; align-items:center; gap:10px;
+  }
+  #nearest-info .arrow{font-size:20px; transition:transform .15s linear;}
+  #nearest-info .txt{flex:1; line-height:1.4;}
+  #nearest-info .txt b{color:var(--accent2);}
+
+  /* 퀴즈 모달 */
+  #quiz-modal{
+    position:fixed; inset:0; z-index:20; background:rgba(4,8,18,.88);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  #quiz-modal.hidden{display:none;}
+  .quiz-card{
+    background:var(--card); border-radius:18px; padding:24px 20px; width:100%; max-width:400px;
+    text-align:center; box-shadow:0 12px 30px rgba(0,0,0,.5);
+  }
+  .quiz-hanja{font-size:72px; margin:6px 0 4px; text-shadow:0 0 20px rgba(56,189,248,.5);}
+  .quiz-q{font-size:14px; color:var(--sub); margin-bottom:18px;}
+  .quiz-opts{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .quiz-opt{
+    background:#0e1626; border:1.5px solid #2f3d5c; border-radius:12px; padding:14px 8px;
+    font-size:15px; color:var(--text);
+  }
+  .quiz-opt.correct{background:rgba(34,197,94,.2); border-color:var(--good); color:var(--good);}
+  .quiz-opt.wrong{background:rgba(239,68,68,.2); border-color:var(--bad); color:var(--bad);}
+  .quiz-feedback{margin-top:14px; font-size:13.5px; min-height:20px; color:var(--sub);}
+  .quiz-attempts{margin-top:6px; font-size:11.5px; color:var(--sub);}
+
+  /* 토스트 */
+  #toast{
+    position:fixed; left:50%; top:18%; transform:translate(-50%,-10px); z-index:30;
+    background:rgba(34,197,94,.95); color:#04120a; font-weight:800; padding:12px 20px;
+    border-radius:999px; font-size:15px; opacity:0; transition:opacity .25s, transform .25s;
+    pointer-events:none; white-space:nowrap;
+  }
+  #toast.show{opacity:1; transform:translate(-50%,0);}
+
+  /* 완료 화면 */
+  #finish-list{width:100%; max-width:420px; margin-top:14px; max-height:40vh; overflow-y:auto;}
+  .finish-row{
+    display:flex; justify-content:space-between; align-items:center; padding:10px 4px;
+    border-bottom:1px solid #24314d; font-size:14px;
+  }
+  .finish-row .g{font-size:20px; margin-right:8px;}
+
+  /* 디버그 패널 */
+  #debug-toggle{
+    position:absolute; right:10px; bottom:96px; z-index:6; width:38px; height:38px; border-radius:50%;
+    background:rgba(18,26,43,.75); color:var(--sub); font-size:16px; border:1px solid #2f3d5c;
+  }
+  #debug-panel{
+    position:absolute; right:10px; bottom:140px; z-index:6; width:230px;
+    background:rgba(10,15,26,.92); border:1px solid #2f3d5c; border-radius:12px; padding:12px; font-size:12px;
+  }
+  #debug-panel.hidden{display:none;}
+  #debug-panel div{margin-bottom:6px; color:var(--sub);}
+  #debug-panel b{color:var(--text);}
+  #debug-panel input[type=range]{width:100%;}
+  .err-banner{
+    position:absolute; top:64px; left:10px; right:10px; z-index:8; background:rgba(239,68,68,.9);
+    color:#fff; font-size:12.5px; padding:10px 12px; border-radius:10px; display:none;
+  }
+</style>
 </head>
-<body class="text-white select-none">
+<body>
 
-    <video id="camera-bg" autoplay playsinline muted></video>
+<!-- ============ 0. CONFIG ============ -->
+<script>
+  // ★★★ 배포 전 반드시 아래 URL을 본인의 Google Apps Script 웹앱 URL로 교체하세요 ★★★
+  // (Apps Script 편집기 > 배포 > 웹 앱으로 배포 > 실행 URL을 복사해서 넣기)
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbwcCXbAAJ0S7xZRepeiAh8KdDOJiOu4DvsliJlXoZ1um9WzsQUqk_MUbleQT8J6VYH2Xw/exec";
 
-    <div id="screen-login" class="layer bg-slate-900 flex flex-col items-center justify-center interactive z-50 px-6">
-        <h1 class="text-5xl font-black text-yellow-400 mb-2 drop-shadow-lg tracking-tighter">한자 GO</h1>
-        <p class="text-lg text-blue-300 font-bold tracking-widest mb-8">내 위치 기반 탐험</p>
-        
-        <div class="w-full max-w-sm bg-slate-800 p-8 rounded-3xl shadow-[0_0_30px_rgba(30,58,138,0.5)] border border-slate-700">
-            <input type="number" id="input-id" placeholder="학번 (예: 1101)" class="w-full bg-slate-700 text-white rounded-xl p-4 text-xl mb-4 font-bold text-center placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500" pattern="[0-9]*" inputmode="numeric">
-            <input type="text" id="input-name" placeholder="이름 (예: 홍길동)" class="w-full bg-slate-700 text-white rounded-xl p-4 text-xl mb-6 font-bold text-center placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-blue-500">
-            
-            <div id="loading-msg" class="text-yellow-400 text-center font-bold text-sm mb-4 hidden">
-                <i class="fas fa-spinner fa-spin mr-2"></i>데이터를 불러오는 중...
-            </div>
-            
-            <button id="btn-login" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-2xl py-4 rounded-xl shadow-lg transition transform active:scale-95 disabled:opacity-50">
-                탐험 시작하기
-            </button>
-        </div>
-        <p class="mt-8 text-xs text-slate-500">실외에서 플레이하실 경우 GPS가 필요합니다.</p>
+  const GAME_CONFIG = {
+    ALIGN_TOLERANCE_DEG: 25,   // 이 각도 이내로 방향을 맞추면 "정면"으로 인정
+    AR_FOV_DEG: 70,            // AR 레이어에 아이콘이 보이는 화면 시야각(가정치)
+    TAPE_RANGE_DEG: 100,       // 상단 나침반 테이프가 좌우로 보여주는 범위
+    HEADING_CALIBRATION_OFFSET: 0, // 기기 오차 보정용(디버그 패널에서 조정 가능)
+  };
+
+  // GAS_URL 설정 전 미리보기/테스트용 샘플 데이터 (실제 배포 시 시트 데이터로 자동 대체됨)
+  // 좌표는 예시입니다 — 실제 학교 지점 좌표로 교체해서 시트에 입력하세요.
+  const SAMPLE_HANJA_DATA = [
+    { id:'h1', hanja:'學', reading:'배울 학', wrong1:'가르칠 교', wrong2:'물을 문', wrong3:'익힐 습', lat:36.63000, lng:127.47000, radius:15, hint:'교문 근처' },
+    { id:'h2', hanja:'校', reading:'학교 교', wrong1:'집 가', wrong2:'고을 읍', wrong3:'집 실', lat:36.63030, lng:127.47020, radius:15, hint:'운동장 근처' },
+    { id:'h3', hanja:'書', reading:'글 서', wrong1:'그림 화', wrong2:'말씀 언', wrong3:'셈 산', lat:36.62990, lng:127.47040, radius:15, hint:'도서관 근처' },
+    { id:'h4', hanja:'門', reading:'문 문', wrong1:'담 장', wrong2:'길 로', wrong3:'창 창', lat:36.63020, lng:127.46970, radius:15, hint:'정문 근처' },
+    { id:'h5', hanja:'心', reading:'마음 심', wrong1:'몸 신', wrong2:'힘 력', wrong3:'뜻 의', lat:36.62975, lng:127.46990, radius:15, hint:'상담실 근처' },
+    { id:'h6', hanja:'友', reading:'벗 우', wrong1:'스승 사', wrong2:'백성 민', wrong3:'사람 인', lat:36.63010, lng:127.47060, radius:15, hint:'급식실 근처' },
+  ];
+</script>
+
+<!-- ============ 1. 시작 화면 (이름/학번/동의) ============ -->
+<div class="screen" id="screen-start">
+  <div class="card">
+    <h1>📍 한자 찾기 AR</h1>
+    <div class="sub">학교 곳곳에 숨어있는 한자를 찾아 포획하는 위치 기반 학습 게임입니다. 실외에서 휴대폰을 들고 이동하며 진행합니다.</div>
+
+    <label for="input-name">이름</label>
+    <input type="text" id="input-name" placeholder="예: 홍길동" autocomplete="off">
+
+    <label for="input-sid">학번</label>
+    <input type="text" id="input-sid" placeholder="예: 20203" inputmode="numeric" autocomplete="off">
+
+    <div class="consent-box">
+      <b>[개인정보 수집·이용 동의]</b><br>
+      1. 수집 항목: 이름, 학번, 한자 포획 활동 기록(정답 여부, 시도 횟수, 활동 위치)<br>
+      2. 수집 목적: 한문과 수업 활동(한자 찾기 게임) 참여 확인 및 학습 평가 참고 자료 활용<br>
+      3. 보유·이용 기간: 해당 학기 수업 종료 후 파기(교사 보관 기준에 따름)<br>
+      4. 동의를 거부할 권리가 있으며, 거부 시 본 게임 활동 참여가 제한될 수 있습니다.<br>
+      <span style="opacity:.7">※ 이 문구는 예시 템플릿입니다. 학교의 개인정보 처리 방침에 맞게 지도교사가 검토·수정한 뒤 사용하세요.</span>
+    </div>
+    <div class="consent-row">
+      <input type="checkbox" id="input-consent">
+      <label for="input-consent" style="margin:0; color:var(--text); font-size:13px;">위 개인정보 수집·이용에 동의합니다.</label>
     </div>
 
-    <div id="screen-dashboard" class="layer bg-slate-900 interactive z-40 hidden flex-col">
-        <div class="p-6 bg-slate-800 rounded-b-3xl shadow-lg flex justify-between items-center border-b border-slate-700">
-            <div>
-                <h2 id="dash-user" class="text-2xl font-black text-white"></h2>
-                <p id="dash-total-score" class="text-yellow-400 font-bold text-sm">총 발견 한자: 0개</p>
-            </div>
-            <button id="btn-logout" class="bg-red-500/20 text-red-400 font-bold px-4 py-2 rounded-lg text-sm">로그아웃</button>
-        </div>
+    <button class="btn-primary" id="btn-to-permission" disabled>다음 (권한 설정) →</button>
+  </div>
+</div>
 
-        <div class="flex-1 overflow-y-auto p-6 space-y-4" id="zone-list">
-            <!-- 구역 카드가 자바스크립트로 생성됩니다. -->
-        </div>
+<!-- ============ 2. 권한 요청 화면 ============ -->
+<div class="screen" id="screen-permission" hidden>
+  <div class="card">
+    <h1>🔐 권한 설정</h1>
+    <div class="sub">AR 게임을 실행하려면 위치와 방향 센서 권한이 필요합니다. 카메라는 선택 사항입니다(허용하면 실제 카메라 화면 위에 한자가 나타납니다).</div>
+
+    <div class="perm-row">
+      <div>
+        <div class="label">📍 위치(GPS)</div>
+        <div class="desc">필수 — 한자와의 거리 계산에 사용</div>
+      </div>
+      <div>
+        <span class="perm-status no" id="status-geo">대기</span>
+        <button class="perm-btn" id="btn-req-geo">허용</button>
+      </div>
     </div>
 
-    <!-- 설정 모달창 (구역 진입 전) -->
-    <div id="modal-settings" class="layer interactive z-50 hidden bg-black/80 flex items-center justify-center p-6 backdrop-blur-sm">
-        <div class="bg-slate-800 p-8 rounded-3xl w-full max-w-sm border border-slate-700 shadow-2xl relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-full h-2 bg-blue-500"></div>
-            <h2 id="settings-zone-name" class="text-2xl font-black text-white text-center mb-6">구역 설정</h2>
-            
-            <div class="space-y-6">
-                <div>
-                    <p class="text-sm font-bold text-slate-400 mb-2">어디에서 진행하시나요?</p>
-                    <div class="flex gap-2">
-                        <button id="btn-mode-out" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl border-2 border-transparent transition">실외 (GPS 맵)</button>
-                        <button id="btn-mode-in" class="flex-1 py-3 bg-slate-700 text-slate-300 font-bold rounded-xl border-2 border-transparent transition">실내 (고정 화면)</button>
-                    </div>
-                </div>
-                
-                <div>
-                    <p class="text-sm font-bold text-slate-400 mb-2 text-center">제한 시간 (분)</p>
-                    <div class="flex items-center justify-center gap-4">
-                        <button id="btn-time-down" class="w-12 h-12 bg-slate-700 rounded-full font-black text-2xl flex items-center justify-center active:bg-slate-600">-</button>
-                        <span id="time-display" class="text-4xl font-black text-yellow-400 w-16 text-center">3</span>
-                        <button id="btn-time-up" class="w-12 h-12 bg-slate-700 rounded-full font-black text-2xl flex items-center justify-center active:bg-slate-600">+</button>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="flex gap-3 mt-8">
-                <button id="btn-cancel-zone" class="flex-1 bg-slate-600 text-white font-bold py-4 rounded-xl active:bg-slate-500">취소</button>
-                <button id="btn-start-zone" class="flex-1 bg-green-500 text-white font-black py-4 rounded-xl active:bg-green-400 shadow-lg shadow-green-500/30">입장하기</button>
-            </div>
-        </div>
+    <div class="perm-row">
+      <div>
+        <div class="label">🧭 방향(나침반)</div>
+        <div class="desc">필수 — 바라보는 방향 판정에 사용</div>
+      </div>
+      <div>
+        <span class="perm-status no" id="status-orient">대기</span>
+        <button class="perm-btn" id="btn-req-orient">허용</button>
+      </div>
     </div>
 
-    <div id="screen-ar" class="layer passthrough z-30 hidden">
-        <div class="absolute top-0 left-0 w-full p-4 flex justify-between items-start interactive">
-            <button id="btn-exit" class="bg-red-500/80 backdrop-blur text-white font-bold px-4 py-2 rounded-full shadow-lg border border-red-400/50">
-                <i class="fas fa-sign-out-alt mr-2"></i>포기
-            </button>
-            
-            <div class="flex flex-col items-end gap-2">
-                <div class="bg-slate-900/80 backdrop-blur rounded-2xl p-3 border border-slate-700 shadow-lg text-right min-w-[120px]">
-                    <p class="text-xs text-slate-400 font-bold mb-1">남은 시간</p>
-                    <p id="timer" class="text-3xl font-black text-white font-mono">03:00</p>
-                </div>
-                <div class="bg-slate-900/80 backdrop-blur rounded-full px-4 py-2 border border-slate-700 shadow-lg flex items-center gap-2">
-                    <i class="fas fa-star text-yellow-400"></i>
-                    <p id="score" class="font-black text-white text-lg">0 / 0</p>
-                </div>
-            </div>
-        </div>
-
-        <div id="ar-container" class="absolute top-0 left-0 w-full h-full"></div>
-        <div id="radar" class="absolute bottom-6 right-6 w-32 h-32 bg-slate-900/80 backdrop-blur rounded-full border-2 border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.3)] hidden interactive">
-            <div class="absolute top-1/2 left-1/2 w-2 h-2 bg-blue-400 rounded-full transform -translate-x-1/2 -translate-y-1/2 shadow-[0_0_5px_#60a5fa]"></div>
-            <div class="absolute top-0 left-1/2 w-[1px] h-full bg-blue-500/30"></div>
-            <div class="absolute top-1/2 left-0 w-full h-[1px] bg-blue-500/30"></div>
-            <div id="radar-dots" class="absolute top-0 left-0 w-full h-full"></div>
-        </div>
-
-        <div id="debug-info" class="absolute bottom-6 left-6 bg-black/50 p-2 rounded text-xs text-green-400 font-mono hidden">
-            컴퍼스 대기중...
-        </div>
+    <div class="perm-row">
+      <div>
+        <div class="label">📷 카메라</div>
+        <div class="desc">선택 — 미허용 시 배경화면으로 대체</div>
+      </div>
+      <div>
+        <span class="perm-status no" id="status-cam">대기</span>
+        <button class="perm-btn" id="btn-req-cam">허용</button>
+      </div>
     </div>
 
-    <!-- 획득 화면 (포켓몬 획득 화면 스타일) -->
-    <div id="screen-capture" class="layer interactive z-50 hidden bg-black/90 flex flex-col items-center justify-center p-6 backdrop-blur-md">
-        <h2 class="text-3xl font-black text-yellow-400 mb-8 drop-shadow-lg tracking-widest animate-bounce">발견!</h2>
-        
-        <div class="bg-slate-800 p-8 rounded-full border-4 border-yellow-400 shadow-[0_0_50px_rgba(250,204,21,0.6)] w-64 h-64 flex flex-col items-center justify-center mb-10" style="animation: pulse-glow 2s infinite;">
-            <p id="cap-hanja" class="text-8xl font-black text-white leading-none mb-2"></p>
-        </div>
-        
-        <div class="text-center mb-12">
-            <p id="cap-meaning" class="text-4xl font-black text-blue-300 mb-2"></p>
-            <p class="text-slate-400 font-bold text-lg">기록되었습니다!</p>
-        </div>
-        
-        <button id="btn-cap-close" class="bg-yellow-400 text-slate-900 font-black text-2xl py-4 px-12 rounded-full active:bg-yellow-500 transition shadow-[0_5px_0_#ca8a04] active:shadow-[0_0px_0_#ca8a04] active:translate-y-[5px]">
-            계속 탐험하기
-        </button>
+    <div class="err-banner-static sub" id="perm-hint" style="text-align:left; margin-top:6px;"></div>
+
+    <button class="btn-primary" id="btn-start-game" disabled>🎮 AR 게임 시작</button>
+    <button class="btn-ghost" id="btn-skip-cam" style="width:100%;">카메라 없이 계속하기 →</button>
+  </div>
+</div>
+
+<!-- ============ 3. 게임 화면 ============ -->
+<div class="screen" id="screen-game" hidden>
+  <video id="camera-video" autoplay playsinline muted hidden></video>
+  <div id="camera-fallback"></div>
+
+  <div class="err-banner" id="err-banner"></div>
+
+  <div id="hud-top">
+    <div>
+      <div class="who">👤 <b id="hud-name">-</b></div>
+      <div id="hud-progress">포획 0 / 0</div>
     </div>
+    <div id="hud-score">0점</div>
+  </div>
 
-    <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyoMPp5TqB11AIrmkhhtptPxX5fcvZja1k_iLiE4PI_Ak7MQ5zTWVP8BRmf7UzNJPiCVA/exec"; 
+  <div id="compass-tape-wrap">
+    <div id="compass-tape"></div>
+  </div>
+  <div id="compass-center-line"></div>
 
-        const app = {
-            state: {
-                studentId: null,
-                studentName: null,
-                hanjaDB: {},       
-                userProgress: {},  
-                currentZoneId: null,
-                currentZoneDB: [],
-                gameTargets: [],
-                heading: 0,
-                myLat: 0,
-                myLng: 0,
-                isOutdoor: true,
-                timeLimitMins: 3,
-                timeRemaining: 0,
-                timerInterval: null,
-                isGameRunning: false
-            },
+  <div id="ar-layer"></div>
 
-            ui: {
-                get: (id) => document.getElementById(id),
-                show: (id) => document.getElementById(id).classList.remove('hidden'),
-                hide: (id) => document.getElementById(id).classList.add('hidden')
-            },
+  <div id="hud-bottom">
+    <div id="nearest-info">
+      <div class="arrow" id="nearest-arrow">➜</div>
+      <div class="txt" id="nearest-text">위치 확인 중...</div>
+    </div>
+  </div>
 
-            init: function() {
-                this.startCamera();
-                this.ui.get('btn-login').addEventListener('click', () => this.login());
-                this.ui.get('btn-logout').addEventListener('click', () => { location.reload(); });
-                this.ui.get('btn-exit').addEventListener('click', () => this.exitZone());
-                this.ui.get('btn-cap-close').addEventListener('click', () => this.closeCaptureModal());
-                
-                this.ui.get('btn-mode-out').addEventListener('click', (e) => this.setMode(true, e.target));
-                this.ui.get('btn-mode-in').addEventListener('click', (e) => this.setMode(false, e.target));
-                this.ui.get('btn-time-down').addEventListener('click', () => this.adjustTime(-1));
-                this.ui.get('btn-time-up').addEventListener('click', () => this.adjustTime(1));
-                this.ui.get('btn-cancel-zone').addEventListener('click', () => this.ui.hide('modal-settings'));
-                this.ui.get('btn-start-zone').addEventListener('click', () => this.start어떤 코드인지 내용이 없습니다! 원하시는 프로그램의 목적이나 사용 언어(예: 파이썬 뱀 게임, 자바스크립트 계산기 등)를 구체적으로 알려주시면, 전체 코드를 작성해 드리겠습니다. 
+  <button id="debug-toggle">🛠</button>
+  <div id="debug-panel" class="hidden">
+    <div>heading: <b id="dbg-heading">-</b></div>
+    <div>lat/lng: <b id="dbg-pos">-</b></div>
+    <div>가장 가까운 목표: <b id="dbg-nearest">-</b></div>
+    <label style="font-size:11px;">방위 보정(°)
+      <input type="range" id="dbg-cal" min="-180" max="180" value="0">
+      <span id="dbg-cal-val">0</span>
+    </label>
+    <div style="margin-top:8px; border-top:1px solid #2f3d5c; padding-top:8px;">
+      테스트 모드(센서 없이 확인)
+    </div>
+    <label style="font-size:11px;">수동 방향(°)
+      <input type="range" id="dbg-heading-manual" min="0" max="359" value="0">
+    </label>
+    <label style="display:flex; align-items:center; gap:6px; font-size:11px;">
+      <input type="checkbox" id="dbg-force-inrange" style="width:14px;height:14px;"> 항상 사거리 안으로 취급
+    </label>
+  </div>
+</div>
 
-어떤 코드가 필요하신지 말씀해 주시겠어요?
+<!-- ============ 4. 완료 화면 ============ -->
+<div class="screen" id="screen-finish" hidden>
+  <div class="card">
+    <h1>🎉 모든 한자 포획 완료!</h1>
+    <div class="sub" id="finish-summary">-</div>
+    <div id="finish-list"></div>
+    <button class="btn-secondary" id="btn-restart">처음으로</button>
+  </div>
+</div>
+
+<!-- ============ 퀴즈 모달 ============ -->
+<div id="quiz-modal" class="hidden">
+  <div class="quiz-card">
+    <div class="quiz-hanja" id="quiz-hanja">漢</div>
+    <div class="quiz-q">이 한자의 <b>훈(뜻)과 음(소리)</b>은 무엇일까요?</div>
+    <div class="quiz-opts" id="quiz-opts"></div>
+    <div class="quiz-feedback" id="quiz-feedback"></div>
+    <div class="quiz-attempts" id="quiz-attempts"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- 상태 ---------------- */
+  const state = {
+    name:'', studentId:'',
+    hanjaList: [],       // 서버(또는 샘플)에서 받아온 전체 목표 목록
+    captured: {},         // id -> {attempts, score}
+    currentPos: null,     // {lat,lng}
+    heading: 0,           // 0~360, 0=정북
+    calOffset: 0,
+    manualMode: false,
+    forceInRange: false,
+    activeQuiz: null,     // 현재 퀴즈 중인 hanja 객체
+    watchId: null,
+    startedAt: null,
+  };
+
+  const $ = (id)=>document.getElementById(id);
+
+  /* ---------------- 지리 계산 (test_geo.js 로 검증됨) ---------------- */
+  function toRad(d){ return d*Math.PI/180; }
+  function toDeg(r){ return r*180/Math.PI; }
+  function distanceMeters(lat1,lon1,lat2,lon2){
+    const R=6371000;
+    const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+    const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    return R*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+  function bearingDeg(lat1,lon1,lat2,lon2){
+    const y=Math.sin(toRad(lon2-lon1))*Math.cos(toRad(lat2));
+    const x=Math.cos(toRad(lat1))*Math.sin(toRad(lat2)) - Math.sin(toRad(lat1))*Math.cos(toRad(lat2))*Math.cos(toRad(lon2-lon1));
+    return (toDeg(Math.atan2(y,x))+360)%360;
+  }
+  function angleDiffSigned(target, current){
+    // target 방향으로 가려면 몇 도 회전해야 하는지 (-180~180, 양수=시계방향/오른쪽)
+    let d = (target - current + 540) % 360 - 180;
+    return d;
+  }
+  function angleDiffAbs(a,b){
+    const d = Math.abs(a-b) % 360;
+    return d>180 ? 360-d : d;
+  }
+
+  /* ---------------- 1. 시작 화면 ---------------- */
+  function checkStartValid(){
+    const ok = $('input-name').value.trim() && $('input-sid').value.trim() && $('input-consent').checked;
+    $('btn-to-permission').disabled = !ok;
+  }
+  ['input','change'].forEach(evt=>{
+    $('input-name').addEventListener(evt, checkStartValid);
+    $('input-sid').addEventListener(evt, checkStartValid);
+    $('input-consent').addEventListener(evt, checkStartValid);
+  });
+
+  $('btn-to-permission').addEventListener('click', function(){
+    state.name = $('input-name').value.trim();
+    state.studentId = $('input-sid').value.trim();
+    postToBackend({ action:'register', name:state.name, studentId:state.studentId, consent:true, userAgent:navigator.userAgent });
+    show('screen-permission');
+  });
+
+  /* ---------------- 2. 권한 요청 ---------------- */
+  let geoGranted=false, orientGranted=false, camGranted=false;
+
+  function setStatus(el, kind, text){
+    el.className = 'perm-status ' + kind;
+    el.textContent = text;
+  }
+
+  function updateStartGameBtn(){
+    $('btn-start-game').disabled = !(geoGranted && orientGranted);
+  }
+
+  $('btn-req-geo').addEventListener('click', function(){
+    if(!navigator.geolocation){
+      setStatus($('status-geo'),'err','미지원'); return;
+    }
+    setStatus($('status-geo'),'no','요청 중');
+    navigator.geolocation.getCurrentPosition(function(pos){
+      geoGranted = true;
+      state.currentPos = { lat:pos.coords.latitude, lng:pos.coords.longitude };
+      setStatus($('status-geo'),'ok','허용됨');
+      updateStartGameBtn();
+    }, function(err){
+      setStatus($('status-geo'),'err','거부됨');
+      $('perm-hint').textContent = '위치 권한이 거부되었습니다. 브라우저/기기 설정에서 이 사이트의 위치 접근을 허용한 뒤 다시 시도해 주세요.';
+    }, { enableHighAccuracy:true, timeout:10000 });
+  });
+
+  $('btn-req-orient').addEventListener('click', function(){
+    function attach(){
+      orientGranted = true;
+      setStatus($('status-orient'),'ok','허용됨');
+      updateStartGameBtn();
+      window.addEventListener('deviceorientationabsolute', onOrientation, true);
+      window.addEventListener('deviceorientation', onOrientation, true);
+    }
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+      // iOS 13+
+      DeviceOrientationEvent.requestPermission().then(function(resp){
+        if (resp === 'granted') attach();
+        else { setStatus($('status-orient'),'err','거부됨'); }
+      }).catch(function(){
+        setStatus($('status-orient'),'err','오류');
+      });
+    } else if ('DeviceOrientationEvent' in window) {
+      attach();
+    } else {
+      setStatus($('status-orient'),'err','미지원');
+      $('perm-hint').textContent = '이 기기/브라우저는 방향 센서를 지원하지 않습니다. 디버그 패널의 테스트 모드로 미리 확인할 수 있습니다.';
+    }
+  });
+
+  $('btn-req-cam').addEventListener('click', function(){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      setStatus($('status-cam'),'err','미지원'); return;
+    }
+    navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false }).then(function(stream){
+      camGranted = true;
+      const v = $('camera-video');
+      v.srcObject = stream;
+      v.hidden = false;
+      $('camera-fallback').style.display='none';
+      setStatus($('status-cam'),'ok','허용됨');
+    }).catch(function(){
+      setStatus($('status-cam'),'err','거부됨');
+    });
+  });
+
+  $('btn-skip-cam').addEventListener('click', function(){
+    if (!geoGranted || !orientGranted){
+      $('perm-hint').textContent = '위치와 방향 센서 권한은 필수입니다. 먼저 허용해 주세요.';
+      return;
+    }
+    startGame();
+  });
+
+  $('btn-start-game').addEventListener('click', startGame);
+
+  /* ---------------- 3. 게임 로직 ---------------- */
+  function startGame(){
+    show('screen-game');
+    state.startedAt = Date.now();
+    $('hud-name').textContent = state.name;
+    loadHanjaList().then(function(){
+      $('hud-progress').textContent = '포획 0 / ' + state.hanjaList.length;
+      if (navigator.geolocation){
+        state.watchId = navigator.geolocation.watchPosition(function(pos){
+          state.currentPos = { lat:pos.coords.latitude, lng:pos.coords.longitude };
+          renderFrame();
+        }, function(){ showErr('위치 신호를 받을 수 없습니다. 실외로 이동하거나 GPS를 확인하세요.'); }, { enableHighAccuracy:true, maximumAge:1000 });
+      }
+      renderFrame();
+    });
+  }
+
+  function loadHanjaList(){
+    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbwcCXbAAJ0S7xZRepeiAh8KdDOJiOu4DvsliJlXoZ1um9WzsQUqk_MUbleQT8J6VYH2Xw/exec') !== -1){
+      // 아직 GAS_URL 미설정 → 샘플 데이터로 동작(테스트용)
+      state.hanjaList = SAMPLE_HANJA_DATA.slice();
+      showErr('⚠ GAS_URL이 아직 설정되지 않아 샘플 데이터로 실행 중입니다. 설정가이드.md를 참고해 실제 백엔드를 연결하세요.', true);
+      return Promise.resolve();
+    }
+    return fetch(GAS_URL).then(function(r){ return r.json(); }).then(function(data){
+      if (data && data.ok && data.hanjaList && data.hanjaList.length){
+        state.hanjaList = data.hanjaList;
+      } else {
+        state.hanjaList = SAMPLE_HANJA_DATA.slice();
+        showErr('⚠ 서버에서 한자 목록을 받아오지 못해 샘플 데이터로 대체합니다.', true);
+      }
+    }).catch(function(){
+      state.hanjaList = SAMPLE_HANJA_DATA.slice();
+      showErr('⚠ 백엔드 연결 실패 — 샘플 데이터로 실행 중입니다.', true);
+    });
+  }
+
+  function showErr(msg, autoHide){
+    const el = $('err-banner');
+    el.textContent = msg;
+    el.style.display = 'block';
+    if (autoHide){ setTimeout(function(){ el.style.display='none'; }, 5000); }
+  }
+
+  function onOrientation(e){
+    if (state.manualMode) return;
+    let heading;
+    if (typeof e.webkitCompassHeading === 'number'){
+      heading = e.webkitCompassHeading; // iOS: 이미 진북 기준
+    } else if (e.absolute && e.alpha != null){
+      heading = (360 - e.alpha) % 360; // Android(대략치)
+    } else if (e.alpha != null){
+      heading = (360 - e.alpha) % 360;
+    } else {
+      return;
+    }
+    state.heading = (heading + state.calOffset + 360) % 360;
+    renderFrame();
+  }
+
+  function remainingTargets(){
+    return state.hanjaList.filter(function(h){ return !state.captured[h.id]; });
+  }
+
+  function renderFrame(){
+    if (!state.currentPos) return;
+    const targets = remainingTargets().map(function(h){
+      const dist = distanceMeters(state.currentPos.lat, state.currentPos.lng, h.lat, h.lng);
+      const brg = bearingDeg(state.currentPos.lat, state.currentPos.lng, h.lat, h.lng);
+      const offset = angleDiffSigned(brg, state.heading); // -180~180
+      return Object.assign({}, h, { dist:dist, bearing:brg, offset:offset });
+    });
+    targets.sort(function(a,b){ return a.dist-b.dist; });
+
+    renderCompassTape(targets);
+    renderARLayer(targets);
+    renderNearestInfo(targets);
+    renderDebug(targets);
+  }
+
+  function renderCompassTape(targets){
+    const wrap = $('compass-tape');
+    wrap.innerHTML = '';
+    const RANGE = GAME_CONFIG.TAPE_RANGE_DEG;
+    const wrapWidth = $('compass-tape-wrap').clientWidth || 360;
+    // 동서남북 표시
+    [0,90,180,270].forEach(function(deg){
+      const off = angleDiffSigned(deg, state.heading);
+      if (Math.abs(off) > RANGE) return;
+      const x = (off/RANGE) * (wrapWidth/2);
+      const label = deg===0?'N':deg===90?'E':deg===180?'S':'W';
+      const m = document.createElement('div');
+      m.className='tape-mark';
+      m.style.left = 'calc(50% + ' + x + 'px)';
+      m.innerHTML = '<span class="tape-cardinal">'+label+'</span>';
+      wrap.appendChild(m);
+    });
+    targets.forEach(function(t){
+      if (Math.abs(t.offset) > RANGE) return;
+      const x = (t.offset/RANGE) * (wrapWidth/2);
+      const m = document.createElement('div');
+      m.className='tape-mark';
+      m.style.left = 'calc(50% + ' + x + 'px)';
+      m.innerHTML = '<span class="glyph">'+t.hanja+'</span><span>'+Math.round(t.dist)+'m</span>';
+      wrap.appendChild(m);
+    });
+  }
+
+  function renderARLayer(targets){
+    const layer = $('ar-layer');
+    layer.innerHTML = '';
+    const FOV = GAME_CONFIG.AR_FOV_DEG;
+    const screenW = window.innerWidth;
+    targets.forEach(function(t){
+      if (Math.abs(t.offset) > FOV/2) return; // 시야 밖
+      const inRange = state.forceInRange || t.dist <= t.radius;
+      const aligned = Math.abs(t.offset) <= GAME_CONFIG.ALIGN_TOLERANCE_DEG;
+      const capturable = inRange && aligned;
+
+      const x = screenW/2 + (t.offset/(FOV/2)) * (screenW*0.42);
+      const scale = Math.max(0.55, Math.min(1, 1 - (t.dist/(t.radius*6))));
+
+      const el = document.createElement('div');
+      el.className = 'ar-marker' + (capturable?' capturable':'');
+      el.style.left = x + 'px';
+      el.style.transform = 'translate(-50%,-50%) scale('+scale.toFixed(2)+')';
+      el.innerHTML =
+        '<div class="ar-glyph">'+t.hanja+'</div>' +
+        '<div class="ar-dist">'+Math.round(t.dist)+'m'+(capturable?' · 포획 가능!':'')+'</div>' +
+        (capturable ? '<button class="ar-tapbtn" data-id="'+t.id+'">👆 포획하기</button>' : '');
+      layer.appendChild(el);
+    });
+    layer.querySelectorAll('.ar-tapbtn').forEach(function(btn){
+      btn.addEventListener('click', function(){ openQuiz(btn.getAttribute('data-id')); });
+    });
+  }
+
+  function renderNearestInfo(targets){
+    if (!targets.length) return;
+    const t = targets[0];
+    const inRange = state.forceInRange || t.dist <= t.radius;
+    const aligned = Math.abs(t.offset) <= GAME_CONFIG.ALIGN_TOLERANCE_DEG;
+    let arrow = '➜';
+    if (Math.abs(t.offset) <= 15) arrow = '⬆️';
+    else if (t.offset > 15) arrow = '↗️';
+    else arrow = '↖️';
+    $('nearest-arrow').textContent = arrow;
+    $('nearest-arrow').style.transform = 'rotate(' + t.offset + 'deg)';
+    let msg;
+    if (inRange && aligned){ msg = '🎯 <b>'+ '한자가 근처에 있어요! AR 화면을 확인하세요' +'</b>'; }
+    else if (!inRange){ msg = '가장 가까운 목표까지 <b>'+Math.round(t.dist)+'m</b> — 그 방향으로 이동하세요'; }
+    else { msg = '거의 다 왔어요! 휴대폰을 <b>'+(t.offset>0?'오른쪽':'왼쪽')+'</b>으로 돌려 방향을 맞춰보세요'; }
+    $('nearest-text').innerHTML = msg;
+  }
+
+  function renderDebug(targets){
+    $('dbg-heading').textContent = Math.round(state.heading)+'°';
+    if (state.currentPos) $('dbg-pos').textContent = state.currentPos.lat.toFixed(5)+', '+state.currentPos.lng.toFixed(5);
+    if (targets.length) $('dbg-nearest').textContent = targets[0].hanja+' ('+Math.round(targets[0].dist)+'m, '+Math.round(targets[0].offset)+'°)';
+  }
+
+  /* ---------------- 퀴즈 & 포획 ---------------- */
+  function openQuiz(hanjaId){
+    const h = state.hanjaList.find(function(x){ return x.id===hanjaId; });
+    if (!h || state.captured[h.id]) return;
+    state.activeQuiz = { hanja:h, attempts:0, startedAt:Date.now() };
+    $('quiz-hanja').textContent = h.hanja;
+    $('quiz-feedback').textContent = '';
+    $('quiz-attempts').textContent = '';
+    renderQuizOptions(h);
+    $('quiz-modal').classList.remove('hidden');
+  }
+
+  function renderQuizOptions(h){
+    const others = state.hanjaList.filter(function(x){ return x.id!==h.id; });
+    let wrongPool = [h.wrong1, h.wrong2, h.wrong3].filter(Boolean);
+    while (wrongPool.length < 3 && others.length){
+      const cand = others[Math.floor(Math.random()*others.length)].reading;
+      if (cand && wrongPool.indexOf(cand) === -1 && cand !== h.reading) wrongPool.push(cand);
+      if (others.length <= wrongPool.length) break;
+    }
+    const opts = shuffle([h.reading].concat(wrongPool.slice(0,3)));
+    const wrap = $('quiz-opts');
+    wrap.innerHTML = '';
+    opts.forEach(function(opt){
+      const b = document.createElement('button');
+      b.className='quiz-opt';
+      b.textContent = opt;
+      b.addEventListener('click', function(){ answerQuiz(opt, b); });
+      wrap.appendChild(b);
+    });
+  }
+
+  function shuffle(arr){
+    const a = arr.slice();
+    for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+    return a;
+  }
+
+  function answerQuiz(chosen, btnEl){
+    const q = state.activeQuiz;
+    if (!q) return;
+    q.attempts++;
+    const correct = chosen === q.hanja.reading;
+    document.querySelectorAll('.quiz-opt').forEach(function(b){ b.disabled = true; });
+    if (correct){
+      btnEl.classList.add('correct');
+      $('quiz-feedback').textContent = '정답입니다! 🎉';
+      const elapsedSec = Math.round((Date.now()-q.startedAt)/1000);
+      const score = Math.max(3, 10 - (q.attempts-1)*2);
+      state.captured[q.hanja.id] = { attempts:q.attempts, score:score };
+      postToBackend({
+        action:'capture', name:state.name, studentId:state.studentId,
+        hanjaId:q.hanja.id, hanja:q.hanja.hanja, correctAnswer:q.hanja.reading,
+        chosenAnswer:chosen, isCorrect:true, attempts:q.attempts, elapsedSec:elapsedSec,
+        lat: state.currentPos?state.currentPos.lat:null, lng: state.currentPos?state.currentPos.lng:null
+      });
+      setTimeout(function(){
+        $('quiz-modal').classList.add('hidden');
+        state.activeQuiz = null;
+        showToast('✅ '+q.hanja.hanja+'('+q.hanja.reading+') 포획! +'+score+'점');
+        updateHud();
+        renderFrame();
+        checkFinish();
+      }, 900);
+    } else {
+      btnEl.classList.add('wrong');
+      $('quiz-feedback').textContent = '아쉬워요! 다시 골라보세요.';
+      $('quiz-attempts').textContent = '시도 '+q.attempts+'회';
+      setTimeout(function(){
+        document.querySelectorAll('.quiz-opt').forEach(function(b){ b.disabled=false; b.classList.remove('wrong'); });
+      }, 700);
+    }
+  }
+
+  function updateHud(){
+    const total = state.hanjaList.length;
+    const capturedCount = Object.keys(state.captured).length;
+    const totalScore = Object.values(state.captured).reduce(function(s,c){ return s+c.score; }, 0);
+    $('hud-progress').textContent = '포획 '+capturedCount+' / '+total;
+    $('hud-score').textContent = totalScore+'점';
+  }
+
+  function checkFinish(){
+    const total = state.hanjaList.length;
+    const capturedCount = Object.keys(state.captured).length;
+    if (capturedCount >= total && total > 0){
+      setTimeout(showFinish, 600);
+    }
+  }
+
+  function showFinish(){
+    if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
+    const totalScore = Object.values(state.captured).reduce(function(s,c){ return s+c.score; }, 0);
+    const elapsedMin = Math.round((Date.now()-state.startedAt)/60000);
+    $('finish-summary').innerHTML = state.name+' 학생, 총 <b style="color:var(--accent2)">'+totalScore+'점</b> 획득! (소요 시간 약 '+elapsedMin+'분)';
+    const list = $('finish-list');
+    list.innerHTML = '';
+    state.hanjaList.forEach(function(h){
+      const c = state.captured[h.id];
+      const row = document.createElement('div');
+      row.className='finish-row';
+      row.innerHTML = '<span><span class="g">'+h.hanja+'</span>'+h.reading+'</span><span>'+(c? c.attempts+'회 시도 · '+c.score+'점' : '-')+'</span>';
+      list.appendChild(row);
+    });
+    show('screen-finish');
+  }
+
+  $('btn-restart').addEventListener('click', function(){ location.reload(); });
+
+  function showToast(msg){
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function(){ t.classList.remove('show'); }, 1600);
+  }
+
+  /* ---------------- 디버그 패널 ---------------- */
+  $('debug-toggle').addEventListener('click', function(){
+    $('debug-panel').classList.toggle('hidden');
+  });
+  $('dbg-cal').addEventListener('input', function(e){
+    state.calOffset = Number(e.target.value);
+    $('dbg-cal-val').textContent = state.calOffset;
+    renderFrame();
+  });
+  $('dbg-heading-manual').addEventListener('input', function(e){
+    state.manualMode = true;
+    state.heading = Number(e.target.value);
+    renderFrame();
+  });
+  $('dbg-force-inrange').addEventListener('change', function(e){
+    state.forceInRange = e.target.checked;
+    renderFrame();
+  });
+
+  /* ---------------- 백엔드 통신 ---------------- */
+  function postToBackend(payload){
+    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbwcCXbAAJ0S7xZRepeiAh8KdDOJiOu4DvsliJlXoZ1um9WzsQUqk_MUbleQT8J6VYH2Xw/exec') !== -1) return; // 샘플 모드에서는 전송 생략
+    try{
+      fetch(GAS_URL, {
+        method:'POST',
+        headers: { 'Content-Type':'text/plain;charset=utf-8' }, // CORS preflight 회피용(중요)
+        body: JSON.stringify(payload)
+      }).catch(function(){ queueForRetry(payload); });
+    }catch(e){ queueForRetry(payload); }
+  }
+  function queueForRetry(payload){
+    try{
+      const key='hanja_ar_pending_queue';
+      const q = JSON.parse(localStorage.getItem(key) || '[]');
+      q.push(payload);
+      localStorage.setItem(key, JSON.stringify(q));
+    }catch(e){ /* 무시 */ }
+  }
+  function flushRetryQueue(){
+    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbwcCXbAAJ0S7xZRepeiAh8KdDOJiOu4DvsliJlXoZ1um9WzsQUqk_MUbleQT8J6VYH2Xw/exec') !== -1) return;
+    try{
+      const key='hanja_ar_pending_queue';
+      const q = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!q.length) return;
+      localStorage.removeItem(key);
+      q.forEach(postToBackend);
+    }catch(e){ /* 무시 */ }
+  }
+  window.addEventListener('online', flushRetryQueue);
+
+  function show(id){
+    ['screen-start','screen-permission','screen-game','screen-finish'].forEach(function(s){
+      $(s).hidden = (s !== id);
+    });
+  }
+
+  window.addEventListener('resize', renderFrame);
+  flushRetryQueue();
+})();
+</script>
+</body>
+</html>
