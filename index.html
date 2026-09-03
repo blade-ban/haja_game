@@ -1,0 +1,27 @@
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- WebAR을 위한 A-Frame 및 MindAR 라이브러리 불러오기 -->
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  </head>
+  <body>
+    <!-- 카메라이며, targets.mind 파일을 읽어옵니다 -->
+    <a-scene mindar-image="imageTargetSrc: ./targets.mind;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <!-- 0번째 사진(급식실 표지판)을 인식했을 때 띄울 내용 -->
+      <a-entity mindar-image-target="targetIndex: 0">
+        <!-- 허공에 파란색 글씨로 '水(물 수)'를 띄웁니다 -->
+        <a-text value="水" color="blue" position="0 0 0" scale="3 3 3" align="center"></a-text>
+      </a-entity>
+      
+      <!-- 1번째 사진(운동장 스탠드)을 인식했을 때 띄울 내용 -->
+      <a-entity mindar-image-target="targetIndex: 1">
+        <!-- 허공에 초록색 글씨로 '木(나무 목)'을 띄웁니다 -->
+        <a-text value="木" color="green" position="0 0 0" scale="3 3 3" align="center"></a-text>
+      </a-entity>
+
+    </a-scene>
+  </body>
+</html>
