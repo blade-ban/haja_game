@@ -267,7 +267,7 @@
 <script>
   // ★★★ 배포 전 반드시 아래 URL을 본인의 Google Apps Script 웹앱 URL로 교체하세요 ★★★
   // (Apps Script 편집기 > 배포 > 웹 앱으로 배포 > 실행 URL을 복사해서 넣기)
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec";
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbyBSpeE1a_UY-lHMt0kBIEMtWWHLOR4iGHrBeziONEjH2DBsuG2I9wZWslnGWb6RZlsmw/exec";
 
   // GAS_URL이 실제로 설정되었는지는 "http로 시작하는가"로 판단합니다.
   // (주의) 아래처럼 GAS_URL 문자열 자체를 다른 곳에 그대로 복사해서 비교하는 방식은 쓰지 마세요 —
@@ -284,7 +284,7 @@
     HEADING_CALIBRATION_OFFSET: 0, // 기기 오차 보정용(디버그 패널에서 조정 가능)
     TIME_LIMIT_SEC: 1200,       // 제한시간(초). 0 또는 null로 설정하면 시간 제한 없음
     HINT_AFTER_WRONG: 2,       // 이 횟수 이상 오답을 고르면 힌트(설명 컬럼)를 보여줌
-    TEAM_POLL_SEC: 20,        // 팀 플레이 시 팀원의 포획 결과를 다시 불러오는 주기(초)
+    TEAM_POLL_SEC: 8,         // 팀 플레이 시 팀원의 포획 결과를 다시 불러오는 주기(초) — 짧을수록 실시간에 가까워지지만 서버 요청이 늘어남
   };
 
   // GAS_URL 설정 전 미리보기/테스트용 샘플 데이터 (실제 배포 시 시트 데이터로 자동 대체됨)
@@ -504,6 +504,7 @@
     timerInterval: null,
     remainingSec: 0,
     dexPollInterval: null,
+    dexModalOpen: false,
   };
 
   const $ = (id)=>document.getElementById(id);
@@ -658,42 +659,76 @@
   }
 
   /**
+   * 서버에서 받아온 도감 목록(dexList)을 state.captured에 병합한다.
+   * 이미 내가 직접(로컬에서) 포획 처리한 항목(mine:true)은 절대 덮어쓰지 않는다 — 이게 없으면
+   * 방금 내가 잡은 한자가 다음 폴링에서 서버 값으로 되돌아가며 깜빡이거나, 아직 서버 반영이
+   * 늦은 사이에 "내가 잡았는데 도감엔 안 보이는" 현상이 생길 수 있다.
+   * teamCtx/nameCtx는 이 병합이 "누구 기준으로" 일어나는지(팀 여부, 내 이름)를 명시적으로 받는다
+   * — state.team/state.name에만 의존하면 아직 등록 전(시작 화면에서 도감만 미리 보는 경우)에는
+   * 항상 빈 값이라 팀 모드 판단이 틀어지기 때문.
+   */
+  function mergeDexEntries(dexList, teamCtx, nameCtx){
+    let changed = false;
+    (dexList||[]).forEach(function(entry){
+      const id = String(entry.hanjaId);
+      const existing = state.captured[id];
+      if (existing && existing.mine) return;
+      if (!existing) changed = true;
+      state.captured[id] = {
+        attempts: entry.attempts != null ? Number(entry.attempts) : 1,
+        score: entry.score != null ? Number(entry.score) : 0,
+        capturedBy: entry.capturedBy || '',
+        mine: teamCtx ? (entry.capturedBy === nameCtx) : true
+      };
+    });
+    return changed;
+  }
+
+  /** state.captured(로컬에서 이미 아는 정보)만으로 도감 그리드에 넘길 맵을 만든다. */
+  function buildDexMapFromState(){
+    const map = {};
+    Object.keys(state.captured).forEach(function(id){
+      const c = state.captured[id];
+      map[id] = { capturedBy: c.capturedBy || (c.mine ? state.name : ''), mine: !!c.mine };
+    });
+    return map;
+  }
+
+  /**
    * 서버(기록 시트)에서 지금까지 모은 도감(개인 또는 팀)을 불러와 state.captured에 병합.
-   * 이미 내가 직접(로컬에서) 포획 처리한 항목(mine:true)은 덮어쓰지 않는다.
+   * 팀 플레이 중이면 주기적으로 호출되어 팀원의 새 포획 결과를 반영한다(근실시간 동기화).
    */
   function syncDex(){
     if (!state.team && !(state.name && state.studentId)) return Promise.resolve();
     return fetchDexFromServer(state.team, state.name, state.studentId).then(function(dex){
       if (!dex) return;
-      let changed = false;
-      dex.forEach(function(entry){
-        const id = String(entry.hanjaId);
-        const existing = state.captured[id];
-        if (existing && existing.mine) return;
-        if (!existing) changed = true;
-        state.captured[id] = {
-          attempts: entry.attempts != null ? Number(entry.attempts) : 1,
-          score: entry.score != null ? Number(entry.score) : 0,
-          capturedBy: entry.capturedBy || '',
-          mine: state.team ? (entry.capturedBy === state.name) : true
-        };
-      });
+      const changed = mergeDexEntries(dex, state.team, state.name);
       if (changed){
         updateHud();
         renderFrame();
         checkFinish();
+        if (state.dexModalOpen) renderDexGrid(buildDexMapFromState());
       }
     }).catch(function(){ /* 실패해도 다음 폴링에서 재시도되므로 조용히 무시 */ });
   }
 
-  /** GAS_URL이 설정된 경우에만 실제 서버에서 도감 데이터를 가져온다. team이 있으면 team 기준, 없으면 name+studentId 기준. */
+  /**
+   * GAS_URL이 설정된 경우에만 실제 서버에서 도감 데이터를 가져온다. team이 있으면 team 기준,
+   * 없으면 name+studentId 기준. 서버가 아직 예전 버전(도감/팀 기능이 없는 .gs)으로 배포되어
+   * 있으면 ?action=dex 요청에도 한자 목록(hanjaList)이 돌아오는데, 이 경우를 감지해서
+   * 재배포가 필요하다는 안내를 화면에 띄운다(무한정 "안 보여요" 상태로 남지 않도록).
+   */
   function fetchDexFromServer(team, name, studentId){
     if (!isBackendConfigured()) return Promise.resolve(null);
     const qs = team
       ? ('team=' + encodeURIComponent(team))
       : ('name=' + encodeURIComponent(name||'') + '&studentId=' + encodeURIComponent(studentId||''));
     return fetch(GAS_URL + '?action=dex&' + qs).then(function(r){ return r.json(); }).then(function(data){
-      return (data && data.ok) ? data.dex : [];
+      if (data && data.hanjaList && !data.dex){
+        showErr('⚠ Apps Script가 이전 버전으로 배포되어 있어 도감·팀 기능이 동작하지 않습니다. Apps Script 편집기에서 "배포 > 배포 관리 > 새 버전"으로 다시 배포해 주세요.', true);
+        return [];
+      }
+      return (data && data.ok) ? (data.dex || []) : [];
     });
   }
 
@@ -1069,6 +1104,7 @@
   /* ---------------- 도감 ---------------- */
   function openDex(){
     $('dex-modal').classList.remove('hidden');
+    state.dexModalOpen = true;
     $('dex-grid').innerHTML = '<div class="lb-loading">불러오는 중...</div>';
 
     const ensureList = state.hanjaList.length ? Promise.resolve() : loadHanjaList();
@@ -1081,25 +1117,26 @@
 
       if (!team && !(name && studentId)){
         $('dex-sub').textContent = '이름·학번 또는 팀 코드를 입력하면 지금까지 모은 도감을 볼 수 있어요.';
-        renderDexGrid({});
+        renderDexGrid(buildDexMapFromState());
         return;
       }
       $('dex-sub').textContent = team ? ('"'+team+'" 팀이 함께 모은 도감') : (name+' 학생의 도감');
 
-      if (!isBackendConfigured()){
-        // 샘플 모드: 이번 세션에서 직접 모은 것만 로컬 state로 보여줌
-        renderDexGrid(state.captured);
-        return;
-      }
+      // 1) 서버 응답을 기다리지 않고, 이미 로컬에서 알고 있는 것(이번 세션에 내가 직접 잡은 것 등)부터
+      //    즉시 표시한다 — 예전 버전에서는 여기서 서버 응답으로 완전히 덮어써버려서, 서버 조회가
+      //    느리거나 실패하면 방금 내가 잡은 한자도 "미발견"으로 보이는 문제가 있었다.
+      renderDexGrid(buildDexMapFromState());
 
+      if (!isBackendConfigured()) return; // 샘플 모드는 로컬 정보가 전부
+
+      // 2) 서버(기록 시트)에서 팀원 등 다른 사람이 모은 결과까지 받아와 병합한 뒤 다시 그린다.
       fetchDexFromServer(team, name, studentId).then(function(dex){
-        const map = {};
-        (dex||[]).forEach(function(entry){
-          map[String(entry.hanjaId)] = { capturedBy: entry.capturedBy || '', mine: !team || entry.capturedBy === name };
-        });
-        renderDexGrid(map);
+        mergeDexEntries(dex, team, name);
+        renderDexGrid(buildDexMapFromState());
+        updateHud();
+        checkFinish();
       }).catch(function(){
-        $('dex-grid').innerHTML = '<div class="lb-empty">도감을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>';
+        // 서버 조회가 실패해도 1)에서 이미 로컬 데이터는 표시되어 있으므로 조용히 무시
       });
     });
   }
@@ -1134,6 +1171,7 @@
   $('btn-open-dex-finish').addEventListener('click', openDex);
   $('btn-close-dex').addEventListener('click', function(){
     $('dex-modal').classList.add('hidden');
+    state.dexModalOpen = false;
   });
 
   /* ---------------- 디버그 패널 ---------------- */
