@@ -82,9 +82,13 @@
   #hud-top .who{font-size:13px;}
   #hud-top .who b{color:var(--accent2);}
   #hud-score{font-size:14px; font-weight:800; color:var(--accent2); text-align:right;}
-  #hud-progress{font-size:12px; color:var(--sub); margin-top:2px;}
+  #hud-progress{font-size:13.5px; color:var(--text); font-weight:700; margin-top:2px;}
   #hud-timer{font-size:12px; color:var(--sub); margin-top:2px; font-variant-numeric:tabular-nums; text-align:right;}
   #hud-timer.urgent{color:var(--bad); font-weight:800;}
+  #btn-open-dex-game{
+    width:34px; height:34px; padding:0; border-radius:50%; font-size:16px;
+    background:rgba(18,26,43,.75); border:1px solid #2f3d5c; flex-shrink:0;
+  }
 
   /* 나침반 테이프 (상단, 발견 안된 목표 방향 안내) */
   #compass-tape-wrap{
@@ -113,9 +117,10 @@
   .ar-marker{
     position:absolute; top:38%; transform:translate(-50%,-50%);
     display:flex; flex-direction:column; align-items:center; gap:6px;
-    transition: left .12s linear, transform .12s linear, opacity .15s linear;
-    pointer-events:auto;
+    transition: left .12s linear, transform .18s ease-out, opacity .15s linear;
+    pointer-events:auto; z-index:1;
   }
+  .ar-marker.capturable{ z-index:10; }
   .ar-glyph{
     font-size:54px; line-height:1; color:#fff;
     text-shadow:0 0 18px rgba(56,189,248,.9), 0 2px 6px rgba(0,0,0,.6);
@@ -217,6 +222,26 @@
   .lb-empty{color:var(--sub); font-size:13px; text-align:center; padding:20px 0;}
   .lb-loading{color:var(--sub); font-size:13px; text-align:center; padding:20px 0;}
 
+  /* 도감 모달 */
+  #dex-modal{
+    position:fixed; inset:0; z-index:25; background:rgba(4,8,18,.9);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  #dex-modal.hidden{display:none;}
+  #dex-grid{
+    overflow-y:auto; flex:1; display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; padding:4px 2px;
+  }
+  .dex-card{
+    background:#0e1626; border:1.5px solid #2f3d5c; border-radius:12px; padding:10px 4px;
+    text-align:center; display:flex; flex-direction:column; align-items:center; gap:2px;
+  }
+  .dex-card.found{border-color:var(--accent); background:rgba(56,189,248,.08);}
+  .dex-card.mine{border-color:var(--accent2); background:rgba(250,204,21,.08);}
+  .dex-card .glyph{font-size:32px; line-height:1.2;}
+  .dex-card.locked .glyph{color:#33415c;}
+  .dex-card .reading{font-size:11px; color:var(--sub); margin-top:2px;}
+  .dex-card .by{font-size:9.5px; color:var(--accent2); margin-top:2px;}
+
   /* 디버그 패널 */
   #debug-toggle{
     position:absolute; right:10px; bottom:96px; z-index:6; width:38px; height:38px; border-radius:50%;
@@ -244,8 +269,10 @@
   // (Apps Script 편집기 > 배포 > 웹 앱으로 배포 > 실행 URL을 복사해서 넣기)
   const GAS_URL = "https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec";
 
-  // GAS_URL이 실제로 설정되었는지는 "http로 시작하는가"로 판단합니다(문자열 일치 방식은
-  // 편집기 전체 찾아바꾸기 시 이 판정 로직 자체가 함께 바뀌어버리는 문제가 있어 변경함).
+  // GAS_URL이 실제로 설정되었는지는 "http로 시작하는가"로 판단합니다.
+  // (주의) 아래처럼 GAS_URL 문자열 자체를 다른 곳에 그대로 복사해서 비교하는 방식은 쓰지 마세요 —
+  // 편집기의 "전체 찾아바꾸기"로 GAS_URL을 채울 때 이 판정 코드까지 함께 바뀌어버려서,
+  // "GAS_URL이 자기 자신을 포함하는지" 검사가 되어 버리는(즉 늘 true가 되는) 실제 사고가 있었습니다.
   function isBackendConfigured(){
     return typeof GAS_URL === 'string' && GAS_URL.indexOf('http') === 0;
   }
@@ -257,6 +284,7 @@
     HEADING_CALIBRATION_OFFSET: 0, // 기기 오차 보정용(디버그 패널에서 조정 가능)
     TIME_LIMIT_SEC: 1200,       // 제한시간(초). 0 또는 null로 설정하면 시간 제한 없음
     HINT_AFTER_WRONG: 2,       // 이 횟수 이상 오답을 고르면 힌트(설명 컬럼)를 보여줌
+    TEAM_POLL_SEC: 20,        // 팀 플레이 시 팀원의 포획 결과를 다시 불러오는 주기(초)
   };
 
   // GAS_URL 설정 전 미리보기/테스트용 샘플 데이터 (실제 배포 시 시트 데이터로 자동 대체됨)
@@ -283,6 +311,9 @@
     <label for="input-sid">학번</label>
     <input type="text" id="input-sid" placeholder="예: 20203" inputmode="numeric" autocomplete="off">
 
+    <label for="input-team">팀 코드 <span style="font-weight:400;">(선택 — 협동학습 시 같은 팀원과 동일하게 입력하면 도감을 함께 모읍니다)</span></label>
+    <input type="text" id="input-team" placeholder="예: 1모둠 (비워두면 개인 플레이)" autocomplete="off">
+
     <div class="consent-box">
       <b>[개인정보 수집·이용 동의]</b><br>
       1. 수집 항목: 이름, 학번, 한자 포획 활동 기록(정답 여부, 시도 횟수, 활동 위치)<br>
@@ -298,7 +329,10 @@
     </div>
 
     <button class="btn-primary" id="btn-to-permission" disabled>다음 (권한 설정) →</button>
-    <button class="btn-ghost" id="btn-open-leaderboard-start" style="width:100%;">🏆 현재 리더보드 보기</button>
+    <div style="display:flex; gap:6px;">
+      <button class="btn-ghost" id="btn-open-leaderboard-start" style="width:100%;">🏆 리더보드</button>
+      <button class="btn-ghost" id="btn-open-dex-start" style="width:100%;">📖 모은 도감 보기</button>
+    </div>
   </div>
 </div>
 
@@ -358,11 +392,14 @@
   <div id="hud-top">
     <div>
       <div class="who">👤 <b id="hud-name">-</b></div>
-      <div id="hud-progress">포획 0 / 0</div>
+      <div id="hud-progress">찾은 한자 0 / 0</div>
     </div>
-    <div>
-      <div id="hud-score">0점</div>
-      <div id="hud-timer">-</div>
+    <div style="display:flex; align-items:flex-start; gap:8px;">
+      <button id="btn-open-dex-game" title="도감 보기">📖</button>
+      <div>
+        <div id="hud-score">0점</div>
+        <div id="hud-timer">-</div>
+      </div>
     </div>
   </div>
 
@@ -407,7 +444,8 @@
     <h1 id="finish-title">🎉 모든 한자 포획 완료!</h1>
     <div class="sub" id="finish-summary">-</div>
     <div id="finish-list"></div>
-    <button class="btn-primary" id="btn-open-leaderboard-finish">🏆 리더보드 보기</button>
+    <button class="btn-primary" id="btn-open-dex-finish">📖 도감 보기</button>
+    <button class="btn-secondary" id="btn-open-leaderboard-finish">🏆 리더보드 보기</button>
     <button class="btn-secondary" id="btn-restart">처음으로</button>
   </div>
 </div>
@@ -419,6 +457,16 @@
     <div class="lb-sub">누적 점수 상위 순위 (정답 포획 기준)</div>
     <div id="lb-list"><div class="lb-loading">불러오는 중...</div></div>
     <button class="btn-secondary" id="btn-close-leaderboard">닫기</button>
+  </div>
+</div>
+
+<!-- ============ 도감 모달 ============ -->
+<div id="dex-modal" class="hidden">
+  <div class="lb-card">
+    <h2>📖 한자 도감</h2>
+    <div class="lb-sub" id="dex-sub">지금까지 모은 한자</div>
+    <div id="dex-grid"><div class="lb-loading">불러오는 중...</div></div>
+    <button class="btn-secondary" id="btn-close-dex">닫기</button>
   </div>
 </div>
 
@@ -442,9 +490,9 @@
 
   /* ---------------- 상태 ---------------- */
   const state = {
-    name:'', studentId:'',
+    name:'', studentId:'', team:'',
     hanjaList: [],       // 서버(또는 샘플)에서 받아온 전체 목표 목록
-    captured: {},         // id -> {attempts, score}
+    captured: {},         // id -> {attempts, score, mine, capturedBy}  ※ 팀원이 잡은 것도 여기 포함됨
     currentPos: null,     // {lat,lng}
     heading: 0,           // 0~360, 0=정북
     calOffset: 0,
@@ -455,6 +503,7 @@
     startedAt: null,
     timerInterval: null,
     remainingSec: 0,
+    dexPollInterval: null,
   };
 
   const $ = (id)=>document.getElementById(id);
@@ -497,7 +546,8 @@
   $('btn-to-permission').addEventListener('click', function(){
     state.name = $('input-name').value.trim();
     state.studentId = $('input-sid').value.trim();
-    postToBackend({ action:'register', name:state.name, studentId:state.studentId, consent:true, userAgent:navigator.userAgent });
+    state.team = $('input-team').value.trim();
+    postToBackend({ action:'register', name:state.name, studentId:state.studentId, team:state.team, consent:true, userAgent:navigator.userAgent });
     show('screen-permission');
   });
 
@@ -583,9 +633,14 @@
   function startGame(){
     show('screen-game');
     state.startedAt = Date.now();
-    $('hud-name').textContent = state.name;
+    $('hud-name').textContent = state.name + (state.team ? ' · '+state.team : '');
     loadHanjaList().then(function(){
-      $('hud-progress').textContent = '포획 0 / ' + state.hanjaList.length;
+      return syncDex(); // 이전에 모아둔(개인 또는 팀) 도감을 먼저 반영
+    }).then(function(){
+      updateHud();
+      if (state.team){
+        state.dexPollInterval = setInterval(syncDex, GAME_CONFIG.TEAM_POLL_SEC*1000);
+      }
       if (navigator.geolocation){
         state.watchId = navigator.geolocation.watchPosition(function(pos){
           state.currentPos = { lat:pos.coords.latitude, lng:pos.coords.longitude };
@@ -594,6 +649,51 @@
       }
       startTimer();
       renderFrame();
+      checkFinish();
+    });
+  }
+
+  function stopDexPoll(){
+    if (state.dexPollInterval){ clearInterval(state.dexPollInterval); state.dexPollInterval = null; }
+  }
+
+  /**
+   * 서버(기록 시트)에서 지금까지 모은 도감(개인 또는 팀)을 불러와 state.captured에 병합.
+   * 이미 내가 직접(로컬에서) 포획 처리한 항목(mine:true)은 덮어쓰지 않는다.
+   */
+  function syncDex(){
+    if (!state.team && !(state.name && state.studentId)) return Promise.resolve();
+    return fetchDexFromServer(state.team, state.name, state.studentId).then(function(dex){
+      if (!dex) return;
+      let changed = false;
+      dex.forEach(function(entry){
+        const id = String(entry.hanjaId);
+        const existing = state.captured[id];
+        if (existing && existing.mine) return;
+        if (!existing) changed = true;
+        state.captured[id] = {
+          attempts: entry.attempts != null ? Number(entry.attempts) : 1,
+          score: entry.score != null ? Number(entry.score) : 0,
+          capturedBy: entry.capturedBy || '',
+          mine: state.team ? (entry.capturedBy === state.name) : true
+        };
+      });
+      if (changed){
+        updateHud();
+        renderFrame();
+        checkFinish();
+      }
+    }).catch(function(){ /* 실패해도 다음 폴링에서 재시도되므로 조용히 무시 */ });
+  }
+
+  /** GAS_URL이 설정된 경우에만 실제 서버에서 도감 데이터를 가져온다. team이 있으면 team 기준, 없으면 name+studentId 기준. */
+  function fetchDexFromServer(team, name, studentId){
+    if (!isBackendConfigured()) return Promise.resolve(null);
+    const qs = team
+      ? ('team=' + encodeURIComponent(team))
+      : ('name=' + encodeURIComponent(name||'') + '&studentId=' + encodeURIComponent(studentId||''));
+    return fetch(GAS_URL + '?action=dex&' + qs).then(function(r){ return r.json(); }).then(function(data){
+      return (data && data.ok) ? data.dex : [];
     });
   }
 
@@ -731,7 +831,9 @@
       const capturable = inRange && aligned;
 
       const x = screenW/2 + (t.offset/(FOV/2)) * (screenW*0.42);
-      const scale = Math.max(0.55, Math.min(1, 1 - (t.dist/(t.radius*6))));
+      const baseScale = Math.max(0.55, Math.min(1, 1 - (t.dist/(t.radius*6))));
+      // 포착 가능한 한자는 다른 한자보다 눈에 띄게 커지고(스케일 업) 항상 맨 앞(z-index)에 보이도록 함
+      const scale = capturable ? Math.max(baseScale, 1) * 1.4 : baseScale;
 
       const el = document.createElement('div');
       el.className = 'ar-marker' + (capturable?' capturable':'');
@@ -823,9 +925,9 @@
       $('quiz-feedback').textContent = '정답입니다! 🎉';
       const elapsedSec = Math.round((Date.now()-q.startedAt)/1000);
       const score = Math.max(3, 10 - (q.attempts-1)*2);
-      state.captured[q.hanja.id] = { attempts:q.attempts, score:score };
+      state.captured[q.hanja.id] = { attempts:q.attempts, score:score, mine:true, capturedBy:state.name };
       postToBackend({
-        action:'capture', name:state.name, studentId:state.studentId,
+        action:'capture', name:state.name, studentId:state.studentId, team:state.team,
         hanjaId:q.hanja.id, hanja:q.hanja.hanja, correctAnswer:q.hanja.reading,
         chosenAnswer:chosen, isCorrect:true, attempts:q.attempts, elapsedSec:elapsedSec,
         lat: state.currentPos?state.currentPos.lat:null, lng: state.currentPos?state.currentPos.lng:null,
@@ -858,7 +960,7 @@
     const total = state.hanjaList.length;
     const capturedCount = Object.keys(state.captured).length;
     const totalScore = Object.values(state.captured).reduce(function(s,c){ return s+c.score; }, 0);
-    $('hud-progress').textContent = '포획 '+capturedCount+' / '+total;
+    $('hud-progress').textContent = '찾은 한자 '+capturedCount+' / '+total;
     $('hud-score').textContent = totalScore+'점';
   }
 
@@ -873,18 +975,23 @@
   function showFinish(reason){
     if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
     stopTimer();
+    stopDexPoll();
     $('quiz-modal').classList.add('hidden');
     const total = state.hanjaList.length;
     const capturedCount = Object.keys(state.captured).length;
-    const totalScore = Object.values(state.captured).reduce(function(s,c){ return s+c.score; }, 0);
+    const myScore = Object.values(state.captured).filter(function(c){ return c.mine; }).reduce(function(s,c){ return s+(c.score||0); }, 0);
+    const teamScore = Object.values(state.captured).reduce(function(s,c){ return s+(c.score||0); }, 0);
     const elapsedMin = Math.round((Date.now()-state.startedAt)/60000);
+    const scoreText = state.team
+      ? ('내 점수 <b style="color:var(--accent2)">'+myScore+'점</b> · "'+state.team+'" 팀 전체 <b style="color:var(--accent2)">'+teamScore+'점</b>')
+      : ('총 <b style="color:var(--accent2)">'+myScore+'점</b> 획득');
 
     if (reason === 'timeup'){
       $('finish-title').textContent = '⏰ 시간 종료!';
-      $('finish-summary').innerHTML = state.name+' 학생, 제한시간 동안 '+capturedCount+' / '+total+'개 포획, 총 <b style="color:var(--accent2)">'+totalScore+'점</b> 획득!';
+      $('finish-summary').innerHTML = state.name+' 학생, 제한시간 동안 '+capturedCount+' / '+total+'개 (팀 전체 기준) 확보, '+scoreText+'!';
     } else {
       $('finish-title').textContent = '🎉 모든 한자 포획 완료!';
-      $('finish-summary').innerHTML = state.name+' 학생, 총 <b style="color:var(--accent2)">'+totalScore+'점</b> 획득! (소요 시간 약 '+elapsedMin+'분)';
+      $('finish-summary').innerHTML = state.name+' 학생, '+scoreText+'! (소요 시간 약 '+elapsedMin+'분)';
     }
 
     const list = $('finish-list');
@@ -893,7 +1000,11 @@
       const c = state.captured[h.id];
       const row = document.createElement('div');
       row.className='finish-row';
-      row.innerHTML = '<span><span class="g">'+h.hanja+'</span>'+h.reading+'</span><span>'+(c? c.attempts+'회 시도 · '+c.score+'점' : '미포획')+'</span>';
+      let detail = '미포획';
+      if (c){
+        detail = c.mine ? (c.attempts+'회 시도 · '+c.score+'점') : ('팀원('+(c.capturedBy||'?')+') 포획');
+      }
+      row.innerHTML = '<span><span class="g">'+h.hanja+'</span>'+h.reading+'</span><span>'+detail+'</span>';
       list.appendChild(row);
     });
     show('screen-finish');
@@ -953,6 +1064,76 @@
   $('btn-open-leaderboard-finish').addEventListener('click', openLeaderboard);
   $('btn-close-leaderboard').addEventListener('click', function(){
     $('leaderboard-modal').classList.add('hidden');
+  });
+
+  /* ---------------- 도감 ---------------- */
+  function openDex(){
+    $('dex-modal').classList.remove('hidden');
+    $('dex-grid').innerHTML = '<div class="lb-loading">불러오는 중...</div>';
+
+    const ensureList = state.hanjaList.length ? Promise.resolve() : loadHanjaList();
+
+    ensureList.then(function(){
+      // 시작 화면에서 바로 열람할 수도 있으므로, 등록 전이면 입력 필드 값을 그대로 사용
+      const team = state.team || $('input-team').value.trim();
+      const name = state.name || $('input-name').value.trim();
+      const studentId = state.studentId || $('input-sid').value.trim();
+
+      if (!team && !(name && studentId)){
+        $('dex-sub').textContent = '이름·학번 또는 팀 코드를 입력하면 지금까지 모은 도감을 볼 수 있어요.';
+        renderDexGrid({});
+        return;
+      }
+      $('dex-sub').textContent = team ? ('"'+team+'" 팀이 함께 모은 도감') : (name+' 학생의 도감');
+
+      if (!isBackendConfigured()){
+        // 샘플 모드: 이번 세션에서 직접 모은 것만 로컬 state로 보여줌
+        renderDexGrid(state.captured);
+        return;
+      }
+
+      fetchDexFromServer(team, name, studentId).then(function(dex){
+        const map = {};
+        (dex||[]).forEach(function(entry){
+          map[String(entry.hanjaId)] = { capturedBy: entry.capturedBy || '', mine: !team || entry.capturedBy === name };
+        });
+        renderDexGrid(map);
+      }).catch(function(){
+        $('dex-grid').innerHTML = '<div class="lb-empty">도감을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>';
+      });
+    });
+  }
+
+  function renderDexGrid(capturedMap){
+    const grid = $('dex-grid');
+    grid.innerHTML = '';
+    const list = state.hanjaList.length ? state.hanjaList : SAMPLE_HANJA_DATA;
+    if (!list.length){
+      grid.innerHTML = '<div class="lb-empty">한자 목록을 불러오지 못했습니다.</div>';
+      return;
+    }
+    list.forEach(function(h){
+      const c = capturedMap[h.id];
+      const el = document.createElement('div');
+      if (c){
+        el.className = 'dex-card found' + (c.mine ? ' mine' : '');
+        el.innerHTML =
+          '<div class="glyph">'+h.hanja+'</div>' +
+          '<div class="reading">'+escapeHtml(h.reading)+'</div>' +
+          (c.capturedBy ? '<div class="by">'+escapeHtml(c.capturedBy)+'</div>' : '');
+      } else {
+        el.className = 'dex-card locked';
+        el.innerHTML = '<div class="glyph">?</div><div class="reading">???</div>';
+      }
+      grid.appendChild(el);
+    });
+  }
+
+  $('btn-open-dex-start').addEventListener('click', openDex);
+  $('btn-open-dex-game').addEventListener('click', openDex);
+  $('btn-open-dex-finish').addEventListener('click', openDex);
+  $('btn-close-dex').addEventListener('click', function(){
+    $('dex-modal').classList.add('hidden');
   });
 
   /* ---------------- 디버그 패널 ---------------- */
