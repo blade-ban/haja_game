@@ -244,6 +244,12 @@
   // (Apps Script 편집기 > 배포 > 웹 앱으로 배포 > 실행 URL을 복사해서 넣기)
   const GAS_URL = "https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec";
 
+  // GAS_URL이 실제로 설정되었는지는 "http로 시작하는가"로 판단합니다(문자열 일치 방식은
+  // 편집기 전체 찾아바꾸기 시 이 판정 로직 자체가 함께 바뀌어버리는 문제가 있어 변경함).
+  function isBackendConfigured(){
+    return typeof GAS_URL === 'string' && GAS_URL.indexOf('http') === 0;
+  }
+
   const GAME_CONFIG = {
     ALIGN_TOLERANCE_DEG: 25,   // 이 각도 이내로 방향을 맞추면 "정면"으로 인정
     AR_FOV_DEG: 70,            // AR 레이어에 아이콘이 보이는 화면 시야각(가정치)
@@ -623,7 +629,7 @@
   }
 
   function loadHanjaList(){
-    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec') !== -1){
+    if (!isBackendConfigured()){
       // 아직 GAS_URL 미설정 → 샘플 데이터로 동작(테스트용)
       state.hanjaList = SAMPLE_HANJA_DATA.slice();
       showErr('⚠ GAS_URL이 아직 설정되지 않아 샘플 데이터로 실행 중입니다. 설정가이드.md를 참고해 실제 백엔드를 연결하세요.', true);
@@ -907,7 +913,7 @@
     $('leaderboard-modal').classList.remove('hidden');
     $('lb-list').innerHTML = '<div class="lb-loading">불러오는 중...</div>';
 
-    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec') !== -1){
+    if (!isBackendConfigured()){
       $('lb-list').innerHTML = '<div class="lb-empty">GAS_URL이 설정되지 않아 리더보드를 불러올 수 없습니다(샘플 모드).</div>';
       return;
     }
@@ -970,7 +976,7 @@
 
   /* ---------------- 백엔드 통신 ---------------- */
   function postToBackend(payload){
-    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec') !== -1) return; // 샘플 모드에서는 전송 생략
+    if (!isBackendConfigured()) return; // 샘플 모드에서는 전송 생략
     try{
       fetch(GAS_URL, {
         method:'POST',
@@ -988,7 +994,7 @@
     }catch(e){ /* 무시 */ }
   }
   function flushRetryQueue(){
-    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec') !== -1) return;
+    if (!isBackendConfigured()) return;
     try{
       const key='hanja_ar_pending_queue';
       const q = JSON.parse(localStorage.getItem(key) || '[]');
