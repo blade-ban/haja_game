@@ -81,8 +81,10 @@
   }
   #hud-top .who{font-size:13px;}
   #hud-top .who b{color:var(--accent2);}
-  #hud-score{font-size:14px; font-weight:800; color:var(--accent2);}
+  #hud-score{font-size:14px; font-weight:800; color:var(--accent2); text-align:right;}
   #hud-progress{font-size:12px; color:var(--sub); margin-top:2px;}
+  #hud-timer{font-size:12px; color:var(--sub); margin-top:2px; font-variant-numeric:tabular-nums; text-align:right;}
+  #hud-timer.urgent{color:var(--bad); font-weight:800;}
 
   /* 나침반 테이프 (상단, 발견 안된 목표 방향 안내) */
   #compass-tape-wrap{
@@ -168,6 +170,8 @@
   .quiz-opt.wrong{background:rgba(239,68,68,.2); border-color:var(--bad); color:var(--bad);}
   .quiz-feedback{margin-top:14px; font-size:13.5px; min-height:20px; color:var(--sub);}
   .quiz-attempts{margin-top:6px; font-size:11.5px; color:var(--sub);}
+  .quiz-hint{margin-top:8px; font-size:12.5px; color:var(--accent2); background:rgba(250,204,21,.1); border:1px solid rgba(250,204,21,.35); border-radius:10px; padding:8px 10px; display:none;}
+  .quiz-hint.show{display:block;}
 
   /* 토스트 */
   #toast{
@@ -185,6 +189,33 @@
     border-bottom:1px solid #24314d; font-size:14px;
   }
   .finish-row .g{font-size:20px; margin-right:8px;}
+
+  /* 리더보드 모달 */
+  #leaderboard-modal{
+    position:fixed; inset:0; z-index:25; background:rgba(4,8,18,.9);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  #leaderboard-modal.hidden{display:none;}
+  .lb-card{
+    background:var(--card); border-radius:18px; padding:20px; width:100%; max-width:420px;
+    box-shadow:0 12px 30px rgba(0,0,0,.5); max-height:80vh; display:flex; flex-direction:column;
+  }
+  .lb-card h2{margin:0 0 4px; font-size:18px;}
+  .lb-sub{color:var(--sub); font-size:12px; margin-bottom:12px;}
+  #lb-list{overflow-y:auto; flex:1;}
+  .lb-row{
+    display:flex; align-items:center; gap:10px; padding:9px 6px; border-bottom:1px solid #24314d; font-size:13.5px;
+  }
+  .lb-row.me{background:rgba(56,189,248,.12); border-radius:8px;}
+  .lb-rank{width:26px; text-align:center; font-weight:800; color:var(--sub);}
+  .lb-row:nth-child(1) .lb-rank{color:#facc15;}
+  .lb-row:nth-child(2) .lb-rank{color:#cbd5e1;}
+  .lb-row:nth-child(3) .lb-rank{color:#d97706;}
+  .lb-name{flex:1;}
+  .lb-name .sid{color:var(--sub); font-size:11px; margin-left:4px;}
+  .lb-score{font-weight:800; color:var(--accent2);}
+  .lb-empty{color:var(--sub); font-size:13px; text-align:center; padding:20px 0;}
+  .lb-loading{color:var(--sub); font-size:13px; text-align:center; padding:20px 0;}
 
   /* 디버그 패널 */
   #debug-toggle{
@@ -211,13 +242,15 @@
 <script>
   // ★★★ 배포 전 반드시 아래 URL을 본인의 Google Apps Script 웹앱 URL로 교체하세요 ★★★
   // (Apps Script 편집기 > 배포 > 웹 앱으로 배포 > 실행 URL을 복사해서 넣기)
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbwcCXbAAJ0S7xZRepeiAh8KdDOJiOu4DvsliJlXoZ1um9WzsQUqk_MUbleQT8J6VYH2Xw/exec";
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec";
 
   const GAME_CONFIG = {
     ALIGN_TOLERANCE_DEG: 25,   // 이 각도 이내로 방향을 맞추면 "정면"으로 인정
     AR_FOV_DEG: 70,            // AR 레이어에 아이콘이 보이는 화면 시야각(가정치)
     TAPE_RANGE_DEG: 100,       // 상단 나침반 테이프가 좌우로 보여주는 범위
     HEADING_CALIBRATION_OFFSET: 0, // 기기 오차 보정용(디버그 패널에서 조정 가능)
+    TIME_LIMIT_SEC: 1200,       // 제한시간(초). 0 또는 null로 설정하면 시간 제한 없음
+    HINT_AFTER_WRONG: 2,       // 이 횟수 이상 오답을 고르면 힌트(설명 컬럼)를 보여줌
   };
 
   // GAS_URL 설정 전 미리보기/테스트용 샘플 데이터 (실제 배포 시 시트 데이터로 자동 대체됨)
@@ -247,9 +280,10 @@
     <div class="consent-box">
       <b>[개인정보 수집·이용 동의]</b><br>
       1. 수집 항목: 이름, 학번, 한자 포획 활동 기록(정답 여부, 시도 횟수, 활동 위치)<br>
-      2. 수집 목적: 한문과 수업 활동(한자 찾기 게임) 참여 확인 및 학습 평가 참고 자료 활용<br>
-      3. 보유·이용 기간: 해당 학기 수업 종료 후 파기(교사 보관 기준에 따름)<br>
-      4. 동의를 거부할 권리가 있으며, 거부 시 본 게임 활동 참여가 제한될 수 있습니다.<br>
+      2. 이용 목적: 개인별 수업 참여 여부 및 학습 완료 확인<br>
+      3. 이용 주체: 한문교과 담당 교사<br>
+      4. 이용 기간: 2026년 학년말까지 보유 후 즉시 파기<br>
+      5. 동의를 거부할 권리가 있으며, 거부 시 본 게임 활동 참여가 제한될 수 있습니다.<br>
       <span style="opacity:.7">※ 이 문구는 예시 템플릿입니다. 학교의 개인정보 처리 방침에 맞게 지도교사가 검토·수정한 뒤 사용하세요.</span>
     </div>
     <div class="consent-row">
@@ -258,6 +292,7 @@
     </div>
 
     <button class="btn-primary" id="btn-to-permission" disabled>다음 (권한 설정) →</button>
+    <button class="btn-ghost" id="btn-open-leaderboard-start" style="width:100%;">🏆 현재 리더보드 보기</button>
   </div>
 </div>
 
@@ -319,7 +354,10 @@
       <div class="who">👤 <b id="hud-name">-</b></div>
       <div id="hud-progress">포획 0 / 0</div>
     </div>
-    <div id="hud-score">0점</div>
+    <div>
+      <div id="hud-score">0점</div>
+      <div id="hud-timer">-</div>
+    </div>
   </div>
 
   <div id="compass-tape-wrap">
@@ -360,10 +398,21 @@
 <!-- ============ 4. 완료 화면 ============ -->
 <div class="screen" id="screen-finish" hidden>
   <div class="card">
-    <h1>🎉 모든 한자 포획 완료!</h1>
+    <h1 id="finish-title">🎉 모든 한자 포획 완료!</h1>
     <div class="sub" id="finish-summary">-</div>
     <div id="finish-list"></div>
+    <button class="btn-primary" id="btn-open-leaderboard-finish">🏆 리더보드 보기</button>
     <button class="btn-secondary" id="btn-restart">처음으로</button>
+  </div>
+</div>
+
+<!-- ============ 리더보드 모달 ============ -->
+<div id="leaderboard-modal" class="hidden">
+  <div class="lb-card">
+    <h2>🏆 리더보드</h2>
+    <div class="lb-sub">누적 점수 상위 순위 (정답 포획 기준)</div>
+    <div id="lb-list"><div class="lb-loading">불러오는 중...</div></div>
+    <button class="btn-secondary" id="btn-close-leaderboard">닫기</button>
   </div>
 </div>
 
@@ -373,6 +422,7 @@
     <div class="quiz-hanja" id="quiz-hanja">漢</div>
     <div class="quiz-q">이 한자의 <b>훈(뜻)과 음(소리)</b>은 무엇일까요?</div>
     <div class="quiz-opts" id="quiz-opts"></div>
+    <div class="quiz-hint" id="quiz-hint"></div>
     <div class="quiz-feedback" id="quiz-feedback"></div>
     <div class="quiz-attempts" id="quiz-attempts"></div>
   </div>
@@ -397,6 +447,8 @@
     activeQuiz: null,     // 현재 퀴즈 중인 hanja 객체
     watchId: null,
     startedAt: null,
+    timerInterval: null,
+    remainingSec: 0,
   };
 
   const $ = (id)=>document.getElementById(id);
@@ -534,12 +586,44 @@
           renderFrame();
         }, function(){ showErr('위치 신호를 받을 수 없습니다. 실외로 이동하거나 GPS를 확인하세요.'); }, { enableHighAccuracy:true, maximumAge:1000 });
       }
+      startTimer();
       renderFrame();
     });
   }
 
+  /* ---------------- 제한시간 타이머 ---------------- */
+  function startTimer(){
+    if (!GAME_CONFIG.TIME_LIMIT_SEC){
+      $('hud-timer').textContent = '';
+      return;
+    }
+    state.remainingSec = GAME_CONFIG.TIME_LIMIT_SEC;
+    updateTimerDisplay();
+    state.timerInterval = setInterval(function(){
+      state.remainingSec--;
+      updateTimerDisplay();
+      if (state.remainingSec <= 0){
+        clearInterval(state.timerInterval);
+        state.timerInterval = null;
+        showFinish('timeup');
+      }
+    }, 1000);
+  }
+
+  function stopTimer(){
+    if (state.timerInterval){ clearInterval(state.timerInterval); state.timerInterval = null; }
+  }
+
+  function updateTimerDisplay(){
+    const el = $('hud-timer');
+    const m = Math.floor(state.remainingSec/60);
+    const s = state.remainingSec % 60;
+    el.textContent = '⏱ ' + m + ':' + (s<10?'0':'') + s;
+    el.classList.toggle('urgent', state.remainingSec <= 60);
+  }
+
   function loadHanjaList(){
-    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbwcCXbAAJ0S7xZRepeiAh8KdDOJiOu4DvsliJlXoZ1um9WzsQUqk_MUbleQT8J6VYH2Xw/exec') !== -1){
+    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec') !== -1){
       // 아직 GAS_URL 미설정 → 샘플 데이터로 동작(테스트용)
       state.hanjaList = SAMPLE_HANJA_DATA.slice();
       showErr('⚠ GAS_URL이 아직 설정되지 않아 샘플 데이터로 실행 중입니다. 설정가이드.md를 참고해 실제 백엔드를 연결하세요.', true);
@@ -690,6 +774,8 @@
     $('quiz-hanja').textContent = h.hanja;
     $('quiz-feedback').textContent = '';
     $('quiz-attempts').textContent = '';
+    $('quiz-hint').textContent = '';
+    $('quiz-hint').classList.remove('show');
     renderQuizOptions(h);
     $('quiz-modal').classList.remove('hidden');
   }
@@ -736,7 +822,8 @@
         action:'capture', name:state.name, studentId:state.studentId,
         hanjaId:q.hanja.id, hanja:q.hanja.hanja, correctAnswer:q.hanja.reading,
         chosenAnswer:chosen, isCorrect:true, attempts:q.attempts, elapsedSec:elapsedSec,
-        lat: state.currentPos?state.currentPos.lat:null, lng: state.currentPos?state.currentPos.lng:null
+        lat: state.currentPos?state.currentPos.lat:null, lng: state.currentPos?state.currentPos.lng:null,
+        score: score
       });
       setTimeout(function(){
         $('quiz-modal').classList.add('hidden');
@@ -750,6 +837,11 @@
       btnEl.classList.add('wrong');
       $('quiz-feedback').textContent = '아쉬워요! 다시 골라보세요.';
       $('quiz-attempts').textContent = '시도 '+q.attempts+'회';
+      if (q.attempts >= GAME_CONFIG.HINT_AFTER_WRONG && q.hanja.hint){
+        const hintEl = $('quiz-hint');
+        hintEl.textContent = '💡 힌트: ' + q.hanja.hint;
+        hintEl.classList.add('show');
+      }
       setTimeout(function(){
         document.querySelectorAll('.quiz-opt').forEach(function(b){ b.disabled=false; b.classList.remove('wrong'); });
       }, 700);
@@ -768,22 +860,34 @@
     const total = state.hanjaList.length;
     const capturedCount = Object.keys(state.captured).length;
     if (capturedCount >= total && total > 0){
-      setTimeout(showFinish, 600);
+      setTimeout(function(){ showFinish('complete'); }, 600);
     }
   }
 
-  function showFinish(){
+  function showFinish(reason){
     if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
+    stopTimer();
+    $('quiz-modal').classList.add('hidden');
+    const total = state.hanjaList.length;
+    const capturedCount = Object.keys(state.captured).length;
     const totalScore = Object.values(state.captured).reduce(function(s,c){ return s+c.score; }, 0);
     const elapsedMin = Math.round((Date.now()-state.startedAt)/60000);
-    $('finish-summary').innerHTML = state.name+' 학생, 총 <b style="color:var(--accent2)">'+totalScore+'점</b> 획득! (소요 시간 약 '+elapsedMin+'분)';
+
+    if (reason === 'timeup'){
+      $('finish-title').textContent = '⏰ 시간 종료!';
+      $('finish-summary').innerHTML = state.name+' 학생, 제한시간 동안 '+capturedCount+' / '+total+'개 포획, 총 <b style="color:var(--accent2)">'+totalScore+'점</b> 획득!';
+    } else {
+      $('finish-title').textContent = '🎉 모든 한자 포획 완료!';
+      $('finish-summary').innerHTML = state.name+' 학생, 총 <b style="color:var(--accent2)">'+totalScore+'점</b> 획득! (소요 시간 약 '+elapsedMin+'분)';
+    }
+
     const list = $('finish-list');
     list.innerHTML = '';
     state.hanjaList.forEach(function(h){
       const c = state.captured[h.id];
       const row = document.createElement('div');
       row.className='finish-row';
-      row.innerHTML = '<span><span class="g">'+h.hanja+'</span>'+h.reading+'</span><span>'+(c? c.attempts+'회 시도 · '+c.score+'점' : '-')+'</span>';
+      row.innerHTML = '<span><span class="g">'+h.hanja+'</span>'+h.reading+'</span><span>'+(c? c.attempts+'회 시도 · '+c.score+'점' : '미포획')+'</span>';
       list.appendChild(row);
     });
     show('screen-finish');
@@ -797,6 +901,53 @@
     t.classList.add('show');
     setTimeout(function(){ t.classList.remove('show'); }, 1600);
   }
+
+  /* ---------------- 리더보드 ---------------- */
+  function openLeaderboard(){
+    $('leaderboard-modal').classList.remove('hidden');
+    $('lb-list').innerHTML = '<div class="lb-loading">불러오는 중...</div>';
+
+    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec') !== -1){
+      $('lb-list').innerHTML = '<div class="lb-empty">GAS_URL이 설정되지 않아 리더보드를 불러올 수 없습니다(샘플 모드).</div>';
+      return;
+    }
+    fetch(GAS_URL + '?action=leaderboard').then(function(r){ return r.json(); }).then(function(data){
+      renderLeaderboard(data && data.ok ? data.leaderboard : []);
+    }).catch(function(){
+      $('lb-list').innerHTML = '<div class="lb-empty">리더보드를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</div>';
+    });
+  }
+
+  function renderLeaderboard(list){
+    const wrap = $('lb-list');
+    wrap.innerHTML = '';
+    if (!list || !list.length){
+      wrap.innerHTML = '<div class="lb-empty">아직 기록이 없습니다.</div>';
+      return;
+    }
+    list.forEach(function(row, i){
+      const isMe = state.name && row.name === state.name && String(row.studentId) === String(state.studentId);
+      const el = document.createElement('div');
+      el.className = 'lb-row' + (isMe ? ' me' : '');
+      el.innerHTML =
+        '<div class="lb-rank">'+(i+1)+'</div>' +
+        '<div class="lb-name">'+escapeHtml(row.name)+'<span class="sid">'+escapeHtml(String(row.studentId||''))+'</span></div>' +
+        '<div class="lb-score">'+(row.totalScore||0)+'점 · '+(row.capturedCount||0)+'개</div>';
+      wrap.appendChild(el);
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+    });
+  }
+
+  $('btn-open-leaderboard-start').addEventListener('click', openLeaderboard);
+  $('btn-open-leaderboard-finish').addEventListener('click', openLeaderboard);
+  $('btn-close-leaderboard').addEventListener('click', function(){
+    $('leaderboard-modal').classList.add('hidden');
+  });
 
   /* ---------------- 디버그 패널 ---------------- */
   $('debug-toggle').addEventListener('click', function(){
@@ -819,7 +970,7 @@
 
   /* ---------------- 백엔드 통신 ---------------- */
   function postToBackend(payload){
-    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbwcCXbAAJ0S7xZRepeiAh8KdDOJiOu4DvsliJlXoZ1um9WzsQUqk_MUbleQT8J6VYH2Xw/exec') !== -1) return; // 샘플 모드에서는 전송 생략
+    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec') !== -1) return; // 샘플 모드에서는 전송 생략
     try{
       fetch(GAS_URL, {
         method:'POST',
@@ -837,7 +988,7 @@
     }catch(e){ /* 무시 */ }
   }
   function flushRetryQueue(){
-    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbwcCXbAAJ0S7xZRepeiAh8KdDOJiOu4DvsliJlXoZ1um9WzsQUqk_MUbleQT8J6VYH2Xw/exec') !== -1) return;
+    if (GAS_URL.indexOf('https://script.google.com/macros/s/AKfycbyHL-qIYxxgoWicjto5D8aLTzjDvr5B_2fq86dN7y2S1kbWgPvIWp8ZPKNuEHVTt1dQJw/exec') !== -1) return;
     try{
       const key='hanja_ar_pending_queue';
       const q = JSON.parse(localStorage.getItem(key) || '[]');
