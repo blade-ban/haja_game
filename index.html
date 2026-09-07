@@ -267,7 +267,7 @@
 <script>
   // ★★★ 배포 전 반드시 아래 URL을 본인의 Google Apps Script 웹앱 URL로 교체하세요 ★★★
   // (Apps Script 편집기 > 배포 > 웹 앱으로 배포 > 실행 URL을 복사해서 넣기)
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbwsX6ig725t9xmVDeLrBIQQf4AdP73dDdAxPnN6Lm-hKavE0ONk9eTSSF49X_R4oqsm_Q/exec";
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbyBSpeE1a_UY-lHMt0kBIEMtWWHLOR4iGHrBeziONEjH2DBsuG2I9wZWslnGWb6RZlsmw/exec";
 
   // GAS_URL이 실제로 설정되었는지는 "http로 시작하는가"로 판단합니다.
   // (주의) 아래처럼 GAS_URL 문자열 자체를 다른 곳에 그대로 복사해서 비교하는 방식은 쓰지 마세요 —
@@ -285,6 +285,9 @@
     TIME_LIMIT_SEC: 1200,       // 제한시간(초). 0 또는 null로 설정하면 시간 제한 없음
     HINT_AFTER_WRONG: 2,       // 이 횟수 이상 오답을 고르면 힌트(설명 컬럼)를 보여줌
     TEAM_POLL_SEC: 8,         // 팀 플레이 시 팀원의 포획 결과를 다시 불러오는 주기(초) — 짧을수록 실시간에 가까워지지만 서버 요청이 늘어남
+    TEAM_MAX_MEMBERS: 5,      // 팀 코드 하나에 허용되는 최대 인원 수 — 화면 안내 문구용. 실제 정원 제한은
+                              // AppsScript_백엔드.gs의 CONFIG.TEAM_MAX_MEMBERS(서버)가 판단하므로, 값을
+                              // 바꾸려면 두 곳(이 값과 .gs의 값)을 반드시 함께 수정해야 함
   };
 
   // GAS_URL 설정 전 미리보기/테스트용 샘플 데이터 (실제 배포 시 시트 데이터로 자동 대체됨)
@@ -311,7 +314,7 @@
     <label for="input-sid">학번</label>
     <input type="text" id="input-sid" placeholder="예: 20203" inputmode="numeric" autocomplete="off">
 
-    <label for="input-team">팀 코드 <span style="font-weight:400;">(선택 — 협동학습 시 같은 팀원과 동일하게 입력하면 도감을 함께 모읍니다)</span></label>
+    <label for="input-team">팀 코드 <span style="font-weight:400;" id="team-cap-note">(선택 — 협동학습 시 같은 팀원과 동일하게 입력하면 도감을 함께 모읍니다)</span></label>
     <input type="text" id="input-team" placeholder="예: 1모둠 (비워두면 개인 플레이)" autocomplete="off">
 
     <div class="consent-box">
@@ -321,7 +324,7 @@
       3. 이용 주체: 한문교과 담당 교사<br>
       4. 이용 기간: 2026년 학년말까지 보유 후 즉시 파기<br>
       5. 동의를 거부할 권리가 있으며, 거부 시 본 게임 활동 참여가 제한될 수 있습니다.<br>
-      <span style="opacity:.7">※ 이 문구는 예시 템플릿입니다. 학교의 개인정보 처리 방침에 맞게 지도교사가 검토·수정한 뒤 사용하세요.</span>
+      <span style="opacity:.7"></span>
     </div>
     <div class="consent-row">
       <input type="checkbox" id="input-consent">
@@ -509,6 +512,8 @@
 
   const $ = (id)=>document.getElementById(id);
 
+  $('team-cap-note').textContent = '(선택 — 협동학습 시 같은 팀원과 동일하게 입력하면 도감을 함께 모읍니다. 한 팀 최대 '+GAME_CONFIG.TEAM_MAX_MEMBERS+'명)';
+
   /* ---------------- 지리 계산 (test_geo.js 로 검증됨) ---------------- */
   function toRad(d){ return d*Math.PI/180; }
   function toDeg(r){ return r*180/Math.PI; }
@@ -548,9 +553,45 @@
     state.name = $('input-name').value.trim();
     state.studentId = $('input-sid').value.trim();
     state.team = $('input-team').value.trim();
-    postToBackend({ action:'register', name:state.name, studentId:state.studentId, team:state.team, consent:true, userAgent:navigator.userAgent });
-    show('screen-permission');
+
+    const btn = $('btn-to-permission');
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = '확인 중...';
+
+    registerParticipant(state.name, state.studentId, state.team).then(function(result){
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+      if (result.ok){
+        show('screen-permission');
+      } else if (result.error === 'team_full'){
+        alert('"'+state.team+'" 팀은 이미 최대 인원('+(result.limit||GAME_CONFIG.TEAM_MAX_MEMBERS)+'명)이 모두 참여했습니다. 다른 팀 코드를 사용하거나 담당 선생님께 문의해 주세요.');
+      } else {
+        alert('참가 등록에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.');
+      }
+    });
   });
+
+  /**
+   * 참가자 등록을 서버에 보내고, 응답을 기다렸다가 성공 여부를 반환한다.
+   * 팀 코드가 있으면 서버(참가자 시트)에서 해당 팀의 인원수(최대 5명, CONFIG.TEAM_MAX_MEMBERS)를
+   * 확인해 정원이 찼으면 등록 자체를 거부한다 — 그래서 여기서는(기존 postToBackend와 달리)
+   * "보내고 나서 다음 화면으로 넘어가는" 방식이 아니라, 서버 응답을 반드시 확인한 뒤에만
+   * 권한 설정 화면으로 넘어가도록 한다. 샘플 모드(GAS_URL 미설정)에서는 인원 제한을 검사할
+   * 서버가 없으므로 그냥 통과시킨다.
+   */
+  function registerParticipant(name, studentId, team){
+    if (!isBackendConfigured()){
+      return Promise.resolve({ ok:true });
+    }
+    return fetch(GAS_URL, {
+      method:'POST',
+      headers: { 'Content-Type':'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action:'register', name:name, studentId:studentId, team:team, consent:true, userAgent:navigator.userAgent })
+    }).then(function(r){ return r.json(); }).catch(function(){
+      return { ok:false, error:'network' };
+    });
+  }
 
   /* ---------------- 2. 권한 요청 ---------------- */
   let geoGranted=false, orientGranted=false, camGranted=false;
