@@ -85,7 +85,7 @@
   #hud-progress{font-size:13.5px; color:var(--text); font-weight:700; margin-top:2px;}
   #hud-timer{font-size:12px; color:var(--sub); margin-top:2px; font-variant-numeric:tabular-nums; text-align:right;}
   #hud-timer.urgent{color:var(--bad); font-weight:800;}
-  .hud-icon-btn{
+  #btn-open-dex-game{
     width:34px; height:34px; padding:0; border-radius:50%; font-size:16px;
     background:rgba(18,26,43,.75); border:1px solid #2f3d5c; flex-shrink:0;
   }
@@ -243,40 +243,6 @@
   .dex-card .radical{font-size:10px; color:var(--accent); margin-top:1px;}
   .dex-card .by{font-size:9.5px; color:var(--accent2); margin-top:2px;}
 
-  /* 지도 모달 */
-  #map-modal{
-    position:fixed; inset:0; z-index:25; background:rgba(4,8,18,.9);
-    display:flex; align-items:center; justify-content:center; padding:20px;
-  }
-  #map-modal.hidden{display:none;}
-  .map-card{max-width:460px;}
-  #map-wrap{
-    position:relative; width:100%; border-radius:12px; overflow:hidden;
-    background:#0e1626; border:1px solid #2f3d5c;
-  }
-  #map-img{display:block; width:100%; height:auto;}
-  #map-markers{position:absolute; inset:0;}
-  .map-marker{
-    position:absolute; transform:translate(-50%,-50%);
-    width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-    font-size:14px; font-weight:800; line-height:1; box-shadow:0 2px 6px rgba(0,0,0,.5);
-  }
-  .map-marker.found{background:var(--accent); color:#04121f; border:2px solid #fff;}
-  .map-marker.unfound{
-    background:rgba(148,163,184,.55); color:#0b1220; width:16px; height:16px; font-size:10px;
-    border:1.5px solid rgba(255,255,255,.6);
-  }
-  .map-marker.me{
-    background:#fff; color:#2563eb; width:16px; height:16px; font-size:10px; border:2px solid #2563eb;
-    box-shadow:0 0 0 6px rgba(37,99,235,.25);
-  }
-  .map-legend{display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:10px; font-size:11.5px; color:var(--sub);}
-  .map-legend-dot{display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:middle;}
-  .map-legend-dot.found{background:var(--accent);}
-  .map-legend-dot.unfound{background:rgba(148,163,184,.55);}
-  .map-legend-dot.me{background:#fff; border:2px solid #2563eb;}
-  .map-error{padding:30px 10px; text-align:center; color:var(--sub); font-size:13px;}
-
   /* 디버그 패널 */
   #debug-toggle{
     position:absolute; right:10px; bottom:96px; z-index:6; width:38px; height:38px; border-radius:50%;
@@ -312,11 +278,6 @@
     return typeof GAS_URL === 'string' && GAS_URL.indexOf('http') === 0;
   }
 
-  // 학교 지도 미니맵이 설정되었는지 여부. MAP_IMAGE_URL이 비어 있으면 지도 기능 자체를 숨깁니다(선택 기능).
-  function isMapConfigured(){
-    return typeof GAME_CONFIG.MAP_IMAGE_URL === 'string' && GAME_CONFIG.MAP_IMAGE_URL.length > 0;
-  }
-
   const GAME_CONFIG = {
     ALIGN_TOLERANCE_DEG: 25,   // 이 각도 이내로 방향을 맞추면 "정면"으로 인정
     AR_FOV_DEG: 70,            // AR 레이어에 아이콘이 보이는 화면 시야각(가정치)
@@ -328,18 +289,6 @@
     TEAM_MAX_MEMBERS: 5,      // 팀 코드 하나에 허용되는 최대 인원 수 — 화면 안내 문구용. 실제 정원 제한은
                               // AppsScript_백엔드.gs의 CONFIG.TEAM_MAX_MEMBERS(서버)가 판단하므로, 값을
                               // 바꾸려면 두 곳(이 값과 .gs의 값)을 반드시 함께 수정해야 함
-
-    // ===== 학교 지도 미니맵 (선택 기능) =====
-    // "🗺 지도" 버튼을 누르면 아래 이미지를 띄우고, 그 위에 찾은/못 찾은 한자와 내 현재 위치를 표시합니다.
-    // MAP_IMAGE_URL을 비워두면(기본값) 지도 버튼 자체가 화면에 나타나지 않습니다.
-    MAP_IMAGE_URL: 'school_map.png',       // 예: 'school_map.png' (이 index.html과 같은 폴더에 올린 학교 항공사진/안내도 파일명 또는 URL)
-    // 이미지 위에서 서로 다른(대각선 방향으로 멀리 떨어진) 두 지점을 고르세요. 그 두 지점의 실제
-    // 위도·경도(한자 좌표를 구한 것과 같은 방법)와, 이미지 안에서 그 지점이 가로·세로로 몇 %(0~100)
-    // 위치에 있는지(이미지를 열어 눈대중으로 가늠)를 아래에 입력하면, 나머지 한자 위치는 자동 계산됩니다.
-     MAP_CALIBRATION: {
-      p1: { lat: 36.633588, lng: 127.426047, xPct: 47.7, yPct: 55.3 },
-      p2: { lat: 36.634112, lng: 127.426641, xPct: 73.8, yPct: 16.4 }
-    },
   };
 
   // GAS_URL 설정 전 미리보기/테스트용 샘플 데이터 (실제 배포 시 시트 데이터로 자동 대체됨)
@@ -387,7 +336,6 @@
     <div style="display:flex; gap:6px;">
       <button class="btn-ghost" id="btn-open-leaderboard-start" style="width:100%;">🏆 리더보드</button>
       <button class="btn-ghost" id="btn-open-dex-start" style="width:100%;">📖 모은 도감 보기</button>
-      <button class="btn-ghost map-btn" id="btn-open-map-start" style="width:100%;">🗺 지도</button>
     </div>
   </div>
 </div>
@@ -451,8 +399,7 @@
       <div id="hud-progress">찾은 한자 0 / 0</div>
     </div>
     <div style="display:flex; align-items:flex-start; gap:8px;">
-      <button class="hud-icon-btn map-btn" id="btn-open-map-game" title="지도 보기">🗺</button>
-      <button class="hud-icon-btn" id="btn-open-dex-game" title="도감 보기">📖</button>
+      <button id="btn-open-dex-game" title="도감 보기">📖</button>
       <div>
         <div id="hud-score">0점</div>
         <div id="hud-timer">-</div>
@@ -502,7 +449,6 @@
     <div class="sub" id="finish-summary">-</div>
     <div id="finish-list"></div>
     <button class="btn-primary" id="btn-open-dex-finish">📖 도감 보기</button>
-    <button class="btn-secondary map-btn" id="btn-open-map-finish">🗺 지도 보기</button>
     <button class="btn-secondary" id="btn-open-leaderboard-finish">🏆 리더보드 보기</button>
     <button class="btn-secondary" id="btn-restart">처음으로</button>
   </div>
@@ -525,24 +471,6 @@
     <div class="lb-sub" id="dex-sub">지금까지 모은 한자</div>
     <div id="dex-grid"><div class="lb-loading">불러오는 중...</div></div>
     <button class="btn-secondary" id="btn-close-dex">닫기</button>
-  </div>
-</div>
-
-<!-- ============ 지도 모달 ============ -->
-<div id="map-modal" class="hidden">
-  <div class="lb-card map-card">
-    <h2>🗺 학교 지도</h2>
-    <div class="lb-sub">찾은 한자와 아직 못 찾은 한자의 대략적인 위치, 내 현재 위치를 표시합니다</div>
-    <div id="map-wrap">
-      <img id="map-img" alt="학교 지도">
-      <div id="map-markers"></div>
-    </div>
-    <div class="map-legend">
-      <span><span class="map-legend-dot found"></span>찾은 한자</span>
-      <span><span class="map-legend-dot unfound"></span>못 찾은 한자</span>
-      <span><span class="map-legend-dot me"></span>내 위치</span>
-    </div>
-    <button class="btn-secondary" id="btn-close-map">닫기</button>
   </div>
 </div>
 
@@ -581,17 +509,11 @@
     remainingSec: 0,
     dexPollInterval: null,
     dexModalOpen: false,
-    mapModalOpen: false,
   };
 
   const $ = (id)=>document.getElementById(id);
 
   $('team-cap-note').textContent = '(선택 — 협동학습 시 같은 팀원과 동일하게 입력하면 도감을 함께 모읍니다. 한 팀 최대 '+GAME_CONFIG.TEAM_MAX_MEMBERS+'명)';
-
-  // 지도 미니맵이 설정되지 않았으면(GAME_CONFIG.MAP_IMAGE_URL 비어있음) 지도 버튼 자체를 숨김
-  if (!isMapConfigured()){
-    document.querySelectorAll('.map-btn').forEach(function(b){ b.hidden = true; });
-  }
 
   /* ---------------- 지리 계산 (test_geo.js 로 검증됨) ---------------- */
   function toRad(d){ return d*Math.PI/180; }
@@ -615,26 +537,6 @@
   function angleDiffAbs(a,b){
     const d = Math.abs(a-b) % 360;
     return d>180 ? 360-d : d;
-  }
-
-  /**
-   * 위도·경도를 지도 이미지 위의 좌표(%, 0~100)로 변환한다. 학교 운동장 규모처럼 좁은 범위를
-   * 다루므로, 위도→세로(%)·경도→가로(%)를 각각 선형 보간하는 간단한 근사만으로 충분하다고 보고
-   * 설계함(정밀 지도 투영 변환은 불필요). 두 기준점(MAP_CALIBRATION.p1/p2)의 위도 또는 경도가
-   * 같으면(즉 대각선이 아니라 같은 위도선/경도선 위의 두 점이면) 계산이 불가능하므로 null 반환.
-   */
-  function geoToImagePercent(lat, lng){
-    const c = GAME_CONFIG.MAP_CALIBRATION;
-    if (!c || !c.p1 || !c.p2) return null;
-    const dLng = c.p2.lng - c.p1.lng;
-    const dLat = c.p2.lat - c.p1.lat;
-    if (!dLng || !dLat) return null;
-    const tX = (lng - c.p1.lng) / dLng;
-    const tY = (lat - c.p1.lat) / dLat;
-    const xPct = c.p1.xPct + tX * (c.p2.xPct - c.p1.xPct);
-    const yPct = c.p1.yPct + tY * (c.p2.yPct - c.p1.yPct);
-    // 기준점 바깥 범위의 좌표라도 마커가 지도 테두리 안에는 보이도록 살짝 여유를 두고 고정(clamp)한다.
-    return { xPct: Math.max(2, Math.min(98, xPct)), yPct: Math.max(2, Math.min(98, yPct)) };
   }
 
   /* ---------------- 1. 시작 화면 ---------------- */
@@ -848,7 +750,6 @@
         renderFrame();
         checkFinish();
         if (state.dexModalOpen) renderDexGrid(buildDexMapFromState());
-        if (state.mapModalOpen) renderMapMarkers();
       }
     }).catch(function(){ /* 실패해도 다음 폴링에서 재시도되므로 조용히 무시 */ });
   }
@@ -965,7 +866,6 @@
     renderARLayer(targets);
     renderNearestInfo(targets);
     renderDebug(targets);
-    updateMyMapMarker();
   }
 
   function renderCompassTape(targets){
@@ -1117,7 +1017,6 @@
         updateHud();
         renderFrame();
         checkFinish();
-        if (state.mapModalOpen) renderMapMarkers();
       }, 900);
     } else {
       btnEl.classList.add('wrong');
@@ -1316,79 +1215,6 @@
   $('btn-close-dex').addEventListener('click', function(){
     $('dex-modal').classList.add('hidden');
     state.dexModalOpen = false;
-  });
-
-  /* ---------------- 지도(미니맵) ---------------- */
-  // 지도 이미지 자체를 못 불러오면(경로 오류 등) 깨진 이미지 아이콘 대신 안내 문구로 대체.
-  // (MAP_IMAGE_URL이 설정된 경우에만 의미가 있으므로 리스너는 항상 걸어둬도 무해함)
-  $('map-img').addEventListener('error', function(){
-    $('map-wrap').innerHTML = '<div class="map-error">지도 이미지를 불러오지 못했습니다. GAME_CONFIG.MAP_IMAGE_URL 경로를 확인해 주세요.</div>';
-  });
-
-  function openMap(){
-    if (!isMapConfigured()) return;
-    $('map-modal').classList.remove('hidden');
-    state.mapModalOpen = true;
-    const img = $('map-img');
-    if (img && img.getAttribute('src') !== GAME_CONFIG.MAP_IMAGE_URL){
-      img.src = GAME_CONFIG.MAP_IMAGE_URL;
-    }
-    const ensureList = state.hanjaList.length ? Promise.resolve() : loadHanjaList();
-    ensureList.then(renderMapMarkers);
-  }
-
-  /** 도감과 동일하게, 이미 아는(state.captured) 정보만으로 즉시 그린다 — 서버 재조회는 하지 않는다
-   *  (도감/지도를 동시에 열람할 일은 드물고, 포획·도감 동기화 시점에 이미 함께 갱신되기 때문). */
-  function renderMapMarkers(){
-    const markersEl = $('map-markers');
-    if (!markersEl) return; // 이미지 로드 실패로 map-wrap이 교체된 경우
-    markersEl.innerHTML = '';
-    const list = state.hanjaList.length ? state.hanjaList : SAMPLE_HANJA_DATA;
-    list.forEach(function(h){
-      if (h.lat == null || h.lng == null) return;
-      const pos = geoToImagePercent(h.lat, h.lng);
-      if (!pos) return;
-      const found = !!state.captured[h.id];
-      const el = document.createElement('div');
-      el.className = 'map-marker ' + (found ? 'found' : 'unfound');
-      el.style.left = pos.xPct + '%';
-      el.style.top = pos.yPct + '%';
-      if (found){
-        el.textContent = h.hanja;
-        el.title = h.hanja + '(' + h.reading + ')' + (h.radical ? ' · 부수 ' + h.radical : '');
-      } else {
-        el.textContent = '?';
-      }
-      markersEl.appendChild(el);
-    });
-    updateMyMapMarker();
-  }
-
-  /** 내 현재 위치 마커만 갱신(마커 요소를 지우지 않고 위치만 옮겨 깜빡임을 줄임). */
-  function updateMyMapMarker(){
-    if (!state.mapModalOpen) return;
-    const markersEl = $('map-markers');
-    if (!markersEl) return;
-    let me = document.getElementById('map-marker-me');
-    if (!state.currentPos){ if (me) me.remove(); return; }
-    const pos = geoToImagePercent(state.currentPos.lat, state.currentPos.lng);
-    if (!pos){ if (me) me.remove(); return; }
-    if (!me){
-      me = document.createElement('div');
-      me.id = 'map-marker-me';
-      me.className = 'map-marker me';
-      markersEl.appendChild(me);
-    }
-    me.style.left = pos.xPct + '%';
-    me.style.top = pos.yPct + '%';
-  }
-
-  $('btn-open-map-start').addEventListener('click', openMap);
-  $('btn-open-map-game').addEventListener('click', openMap);
-  $('btn-open-map-finish').addEventListener('click', openMap);
-  $('btn-close-map').addEventListener('click', function(){
-    $('map-modal').classList.add('hidden');
-    state.mapModalOpen = false;
   });
 
   /* ---------------- 디버그 패널 ---------------- */
