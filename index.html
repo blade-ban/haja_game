@@ -183,7 +183,7 @@
     position:fixed; left:50%; top:18%; transform:translate(-50%,-10px); z-index:30;
     background:rgba(34,197,94,.95); color:#04120a; font-weight:800; padding:12px 20px;
     border-radius:999px; font-size:15px; opacity:0; transition:opacity .25s, transform .25s;
-    pointer-events:none; white-space:nowrap;
+    pointer-events:none; white-space:nowrap; max-width:calc(100vw - 40px); overflow:hidden; text-overflow:ellipsis;
   }
   #toast.show{opacity:1; transform:translate(-50%,0);}
 
@@ -240,6 +240,7 @@
   .dex-card .glyph{font-size:32px; line-height:1.2;}
   .dex-card.locked .glyph{color:#33415c;}
   .dex-card .reading{font-size:11px; color:var(--sub); margin-top:2px;}
+  .dex-card .radical{font-size:10px; color:var(--accent); margin-top:1px;}
   .dex-card .by{font-size:9.5px; color:var(--accent2); margin-top:2px;}
 
   /* 디버그 패널 */
@@ -293,12 +294,12 @@
   // GAS_URL 설정 전 미리보기/테스트용 샘플 데이터 (실제 배포 시 시트 데이터로 자동 대체됨)
   // 좌표는 예시입니다 — 실제 학교 지점 좌표로 교체해서 시트에 입력하세요.
   const SAMPLE_HANJA_DATA = [
-    { id:'h1', hanja:'學', reading:'배울 학', wrong1:'가르칠 교', wrong2:'물을 문', wrong3:'익힐 습', lat:36.63000, lng:127.47000, radius:15, hint:'교문 근처' },
-    { id:'h2', hanja:'校', reading:'학교 교', wrong1:'집 가', wrong2:'고을 읍', wrong3:'집 실', lat:36.63030, lng:127.47020, radius:15, hint:'운동장 근처' },
-    { id:'h3', hanja:'書', reading:'글 서', wrong1:'그림 화', wrong2:'말씀 언', wrong3:'셈 산', lat:36.62990, lng:127.47040, radius:15, hint:'도서관 근처' },
-    { id:'h4', hanja:'門', reading:'문 문', wrong1:'담 장', wrong2:'길 로', wrong3:'창 창', lat:36.63020, lng:127.46970, radius:15, hint:'정문 근처' },
-    { id:'h5', hanja:'心', reading:'마음 심', wrong1:'몸 신', wrong2:'힘 력', wrong3:'뜻 의', lat:36.62975, lng:127.46990, radius:15, hint:'상담실 근처' },
-    { id:'h6', hanja:'友', reading:'벗 우', wrong1:'스승 사', wrong2:'백성 민', wrong3:'사람 인', lat:36.63010, lng:127.47060, radius:15, hint:'급식실 근처' },
+    { id:'h1', hanja:'學', reading:'배울 학', wrong1:'가르칠 교', wrong2:'물을 문', wrong3:'익힐 습', lat:36.63000, lng:127.47000, radius:15, hint:'교문 근처', radical:'子' },
+    { id:'h2', hanja:'校', reading:'학교 교', wrong1:'집 가', wrong2:'고을 읍', wrong3:'집 실', lat:36.63030, lng:127.47020, radius:15, hint:'운동장 근처', radical:'木' },
+    { id:'h3', hanja:'書', reading:'글 서', wrong1:'그림 화', wrong2:'말씀 언', wrong3:'셈 산', lat:36.62990, lng:127.47040, radius:15, hint:'도서관 근처', radical:'曰' },
+    { id:'h4', hanja:'門', reading:'문 문', wrong1:'담 장', wrong2:'길 로', wrong3:'창 창', lat:36.63020, lng:127.46970, radius:15, hint:'정문 근처', radical:'門' },
+    { id:'h5', hanja:'心', reading:'마음 심', wrong1:'몸 신', wrong2:'힘 력', wrong3:'뜻 의', lat:36.62975, lng:127.46990, radius:15, hint:'상담실 근처', radical:'心' },
+    { id:'h6', hanja:'友', reading:'벗 우', wrong1:'스승 사', wrong2:'백성 민', wrong3:'사람 인', lat:36.63010, lng:127.47060, radius:15, hint:'급식실 근처', radical:'又' },
   ];
 </script>
 
@@ -998,7 +999,7 @@
     document.querySelectorAll('.quiz-opt').forEach(function(b){ b.disabled = true; });
     if (correct){
       btnEl.classList.add('correct');
-      $('quiz-feedback').textContent = '정답입니다! 🎉';
+      $('quiz-feedback').textContent = '정답입니다! 🎉' + (q.hanja.radical ? ' (부수: '+q.hanja.radical+')' : '');
       const elapsedSec = Math.round((Date.now()-q.startedAt)/1000);
       const score = Math.max(3, 10 - (q.attempts-1)*2);
       state.captured[q.hanja.id] = { attempts:q.attempts, score:score, mine:true, capturedBy:state.name };
@@ -1012,7 +1013,7 @@
       setTimeout(function(){
         $('quiz-modal').classList.add('hidden');
         state.activeQuiz = null;
-        showToast('✅ '+q.hanja.hanja+'('+q.hanja.reading+') 포획! +'+score+'점');
+        showToast('✅ '+q.hanja.hanja+'('+q.hanja.reading+') 포획!'+(q.hanja.radical?' 부수 '+q.hanja.radical:'')+' +'+score+'점');
         updateHud();
         renderFrame();
         checkFinish();
@@ -1080,7 +1081,7 @@
       if (c){
         detail = c.mine ? (c.attempts+'회 시도 · '+c.score+'점') : ('팀원('+(c.capturedBy||'?')+') 포획');
       }
-      row.innerHTML = '<span><span class="g">'+h.hanja+'</span>'+h.reading+'</span><span>'+detail+'</span>';
+      row.innerHTML = '<span><span class="g">'+h.hanja+'</span>'+h.reading+(h.radical?' · 부수 '+escapeHtml(h.radical):'')+'</span><span>'+detail+'</span>';
       list.appendChild(row);
     });
     show('screen-finish');
@@ -1092,7 +1093,7 @@
     const t = $('toast');
     t.textContent = msg;
     t.classList.add('show');
-    setTimeout(function(){ t.classList.remove('show'); }, 1600);
+    setTimeout(function(){ t.classList.remove('show'); }, 2200);
   }
 
   /* ---------------- 리더보드 ---------------- */
@@ -1198,6 +1199,7 @@
         el.innerHTML =
           '<div class="glyph">'+h.hanja+'</div>' +
           '<div class="reading">'+escapeHtml(h.reading)+'</div>' +
+          (h.radical ? '<div class="radical">부수 '+escapeHtml(h.radical)+'</div>' : '') +
           (c.capturedBy ? '<div class="by">'+escapeHtml(c.capturedBy)+'</div>' : '');
       } else {
         el.className = 'dex-card locked';
