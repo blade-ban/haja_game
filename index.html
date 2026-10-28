@@ -666,6 +666,7 @@
       btn.textContent = originalLabel;
       if (result.ok){
         show('screen-permission');
+        checkGeoPermissionProactively();
       } else if (result.error === 'team_full'){
         alert('"'+state.team+'" 팀은 이미 최대 인원('+(result.limit||GAME_CONFIG.TEAM_MAX_MEMBERS)+'명)이 모두 참여했습니다. 다른 팀 코드를 사용하거나 담당 선생님께 문의해 주세요.');
       } else {
@@ -707,6 +708,53 @@
     $('btn-start-game').disabled = !(geoGranted && orientGranted);
   }
 
+  /* 위치 권한을 한 번 "차단(거부)"하면, 이후에는 "허용" 버튼을 눌러도 브라우저가 OS 권한창을
+     다시 띄우지 않고 조용히 즉시 거부만 반복한다 — 사용자 입장에서는 "버튼이 안 눌리는 것"처럼
+     보인다. 기기(iOS/Android)별로 차단을 해제하는 경로가 달라서, 플랫폼을 감지해 구체적인
+     안내를 보여준다. */
+  function detectPermPlatform(){
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.indexOf('Macintosh') !== -1 && navigator.maxTouchPoints > 1);
+    if (isIOS) return 'ios';
+    if (/Android/.test(ua)) return 'android';
+    return 'other';
+  }
+
+  function geoDeniedHintHTML(){
+    const platform = detectPermPlatform();
+    if (platform === 'ios'){
+      return '📍 위치 권한이 차단되어 있어, "허용" 버튼을 눌러도 다시 묻지 않고 바로 거부됩니다. 아이폰에서는 아래 <b>두 곳 모두</b> 확인이 필요합니다.<br>' +
+             '① 설정 앱 → 개인정보 보호 및 보안 → 위치 서비스 → Safari 웹사이트 → "허용"으로 변경<br>' +
+             '② Safari 주소창의 "AA" 아이콘(또는 자물쇠) → 웹사이트 설정 → 위치 → "허용"으로 변경<br>' +
+             '두 곳 모두 바꾼 뒤 이 페이지로 돌아와 새로고침하고 다시 "허용"을 눌러 주세요.';
+    }
+    if (platform === 'android'){
+      return '📍 위치 권한이 차단되어 있어, "허용" 버튼을 눌러도 다시 묻지 않고 바로 거부됩니다. 주소창의 자물쇠(🔒) 또는 정보 아이콘을 눌러 → 권한(또는 사이트 설정) → 위치 → "허용"으로 바꾼 뒤, 페이지를 새로고침하고 다시 "허용"을 눌러 주세요.';
+    }
+    return '📍 위치 권한이 차단되어 있어, "허용" 버튼을 눌러도 다시 묻지 않고 바로 거부됩니다. 브라우저 주소창의 자물쇠 아이콘 → 사이트 설정에서 위치 접근을 "허용"으로 바꾼 뒤 새로고침하고 다시 시도해 주세요.';
+  }
+
+  /* 권한 화면에 들어오는 즉시(버튼을 누르기 전에) 이미 차단된 상태인지 먼저 확인해서 안내 문구를
+     미리 보여준다 — 그래야 "허용"을 눌러도 OS 권한창이 뜨지 않는 상황에서 사용자가 "버튼이
+     고장났다"고 오해하지 않는다. Permissions API를 지원하지 않는 브라우저(일부 iOS Safari 등)에서는
+     조용히 넘어가고, 기존처럼 버튼을 눌렀을 때의 결과로만 안내한다. */
+  function checkGeoPermissionProactively(){
+    if (!navigator.permissions || !navigator.permissions.query) return;
+    navigator.permissions.query({ name:'geolocation' }).then(function(status){
+      function reflect(){
+        if (status.state === 'denied' && !geoGranted){
+          setStatus($('status-geo'),'err','차단됨');
+          $('perm-hint').innerHTML = geoDeniedHintHTML();
+        } else if (status.state !== 'denied' && $('status-geo').textContent === '차단됨'){
+          setStatus($('status-geo'),'no','대기');
+          $('perm-hint').textContent = '';
+        }
+      }
+      reflect();
+      status.onchange = reflect; // 설정을 바꾸고 돌아오면(지원 브라우저에서는) 자동으로 갱신됨
+    }).catch(function(){ /* 일부 iOS Safari 등은 geolocation 권한 조회 자체를 지원하지 않음 — 무시 */ });
+  }
+
   $('btn-req-geo').addEventListener('click', function(){
     if(!navigator.geolocation){
       setStatus($('status-geo'),'err','미지원'); return;
@@ -718,8 +766,8 @@
       setStatus($('status-geo'),'ok','허용됨');
       updateStartGameBtn();
     }, function(err){
-      setStatus($('status-geo'),'err','거부됨');
-      $('perm-hint').textContent = '위치 권한이 거부되었습니다. 브라우저/기기 설정에서 이 사이트의 위치 접근을 허용한 뒤 다시 시도해 주세요.';
+      setStatus($('status-geo'),'err','차단됨');
+      $('perm-hint').innerHTML = geoDeniedHintHTML();
     }, { enableHighAccuracy:true, timeout:10000 });
   });
 
